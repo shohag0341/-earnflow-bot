@@ -239,18 +239,48 @@
             }, 1000);
         });
 
-        claimBtn.addEventListener('click', () => {
-            claimBtn.textContent = '✅ সম্পন্ন!';
-            claimBtn.disabled = true;
-            msgEl.className = 'msg show success';
-            msgEl.textContent = '🎉 রিওয়ার্ড পাঠানো হয়েছে!';
+        claimBtn.addEventListener('click', async () => {
+    claimBtn.textContent = '⏳ পাঠানো হচ্ছে...';
+    claimBtn.disabled = true;
+    msgEl.className = 'msg show success';
+    msgEl.textContent = '⏳ রিওয়ার্ড পাঠানো হচ্ছে...';
 
-            const sendData = JSON.stringify({ action: 'claim', task_id: taskData?.task_id });
-            console.log('Sending:', sendData);
-            tg.sendData(sendData);
-            tg.HapticFeedback.notification('success');
-            setTimeout(() => tg.close(), 1500);
+    try {
+        const res = await fetch(`${BASE_URL}/api/webhook`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                action: 'claim_task', 
+                user_id: userId, 
+                task_id: taskData?.task_id 
+            })
         });
+        
+        const result = await res.json();
+        console.log('Claim result:', result);
+        
+        if (result.success) {
+            claimBtn.textContent = '✅ সম্পন্ন!';
+            msgEl.className = 'msg show success';
+            msgEl.textContent = `🎉 $${result.reward} যোগ হয়েছে!`;
+            document.getElementById('userBalance').textContent = '$' + result.new_balance.toFixed(2);
+        } else {
+            claimBtn.textContent = '❌ ব্যর্থ!';
+            msgEl.className = 'msg show error';
+            msgEl.textContent = result.message || '❌ এরর!';
+            claimBtn.disabled = false;
+        }
+    } catch(e) {
+        console.error('Claim error:', e);
+        claimBtn.textContent = '❌ এরর!';
+        msgEl.className = 'msg show error';
+        msgEl.textContent = '❌ নেটওয়ার্ক এরর!';
+        claimBtn.disabled = false;
+    }
+
+    tg.HapticFeedback.notification('success');
+    setTimeout(() => tg.close(), 2000);
+});
 
         // Start
         init();
