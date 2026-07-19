@@ -1,4 +1,7 @@
 {
   "name": "earnflow-bot",
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "dependencies": {
+    "telegraf": "^4.15.3"
+  }
 }
