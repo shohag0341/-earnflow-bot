@@ -6,80 +6,48 @@
     <title>EarnFlow - টাস্ক</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #0a0e17; color: #e0e6f0;
-            font-family: Arial, sans-serif; min-height: 100vh;
-            display: flex; justify-content: center; align-items: center;
-            padding: 16px;
-        }
-        .card {
-            background: #131a2b; border-radius: 16px;
-            padding: 24px; width: 100%; max-width: 360px; text-align: center;
-        }
-        .icon { font-size: 48px; margin-bottom: 8px; }
-        h2 { font-size: 18px; margin-bottom: 4px; }
-        .reward { color: #00d4aa; font-weight: bold; margin-bottom: 10px; }
-        .info {
-            display: flex; justify-content: space-between;
-            background: #1a2340; padding: 10px 14px;
-            border-radius: 10px; margin-bottom: 14px; font-size: 13px;
-        }
-        .info span { color: #00d4aa; font-weight: bold; }
-        .timer-circle {
-            width: 90px; height: 90px; border-radius: 50%;
-            border: 5px solid #1e2d44; margin: 0 auto 14px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 26px; font-weight: bold;
-        }
-        .btn {
-            display: block; width: 100%; padding: 14px;
-            border: none; border-radius: 12px;
-            font-size: 16px; font-weight: bold; margin-bottom: 10px; cursor: pointer;
-        }
-        .ad-btn { background: #6366f1; color: white; }
-        .claim-btn { background: #00d4aa; color: #0a0e17; }
-        .claim-btn:disabled { background: #2d3548; color: #5a6478; cursor: not-allowed; }
-        .join-btn { background: #ffa502; color: #0a0e17; }
-        .msg {
-            margin-top: 12px; font-size: 14px;
-            padding: 10px; border-radius: 8px; display: none;
-        }
-        .msg.show { display: block; }
-        .success { background: rgba(0, 212, 170, 0.2); color: #00d4aa; }
-        .error { background: rgba(255, 71, 87, 0.2); color: #ff4757; }
-        .hidden { display: none; }
-        .channel-list { text-align: left; margin-bottom: 16px; }
-        .channel-item {
-            display: flex; align-items: center; gap: 10px;
-            padding: 10px; background: #1a2340;
-            border-radius: 10px; margin-bottom: 8px;
-        }
-        .channel-item a { color: #6366f1; text-decoration: none; flex: 1; }
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:#0a0e17;color:#e0e6f0;font-family:Arial;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:16px}
+        .card{background:#131a2b;border-radius:16px;padding:24px;width:100%;max-width:360px;text-align:center}
+        .icon{font-size:48px;margin-bottom:8px}
+        h2{font-size:18px;margin-bottom:4px}
+        .reward{color:#00d4aa;font-weight:bold;margin-bottom:10px}
+        .info{display:flex;justify-content:space-between;background:#1a2340;padding:10px 14px;border-radius:10px;margin-bottom:14px;font-size:13px}
+        .info span{color:#00d4aa;font-weight:bold}
+        .timer-circle{width:90px;height:90px;border-radius:50%;border:5px solid #1e2d44;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:bold}
+        .btn{display:block;width:100%;padding:14px;border:none;border-radius:12px;font-size:16px;font-weight:bold;margin-bottom:10px;cursor:pointer}
+        .ad-btn{background:#6366f1;color:white}
+        .claim-btn{background:#00d4aa;color:#0a0e17}
+        .claim-btn:disabled{background:#2d3548;color:#5a6478;cursor:not-allowed}
+        .join-btn{background:#ffa502;color:#0a0e17}
+        .msg{margin-top:12px;font-size:14px;padding:10px;border-radius:8px;display:none}
+        .msg.show{display:block}
+        .success{background:rgba(0,212,170,0.2);color:#00d4aa}
+        .error{background:rgba(255,71,87,0.2);color:#ff4757}
+        .hidden{display:none}
+        .channel-list{text-align:left;margin-bottom:16px}
+        .channel-item{display:flex;align-items:center;gap:10px;padding:10px;background:#1a2340;border-radius:10px;margin-bottom:8px}
+        .channel-item a{color:#6366f1;text-decoration:none;flex:1}
     </style>
 </head>
 <body>
-    <!-- Channel Join Screen -->
     <div class="card hidden" id="joinScreen">
         <div class="icon">🔒</div>
         <h2>চ্যানেলে জয়েন করুন</h2>
-        <p style="color:#8892a4; margin-bottom:14px; font-size:14px;">টাস্ক করতে চ্যানেলে জয়েন করুন</p>
+        <p style="color:#8892a4;margin-bottom:14px;font-size:14px">টাস্ক করতে চ্যানেলে জয়েন করুন</p>
         <div class="channel-list" id="channelList"></div>
         <button class="btn join-btn" id="verifyBtn">✅ জয়েন করেছি</button>
         <div class="msg" id="joinMsg"></div>
     </div>
 
-    <!-- Task Screen -->
     <div class="card" id="taskScreen">
         <div class="icon" id="taskIcon">📺</div>
         <h2 id="taskTitle">টাস্ক</h2>
         <p class="reward" id="taskReward">💰 $0.00</p>
-        
         <div class="info">
             <div>💰 ব্যালেন্স<br><span id="userBalance">$0.00</span></div>
             <div>📊 আজ বাকি<br><span id="taskRemaining">-</span></div>
         </div>
-
         <div class="timer-circle" id="timer">১৫</div>
         <button class="btn ad-btn" id="adBtn">🔗 অ্যাড দেখুন</button>
         <button class="btn claim-btn" id="claimBtn" disabled>🎁 রিওয়ার্ড নিন</button>
@@ -87,169 +55,95 @@
     </div>
 
     <script>
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
+        const tg=window.Telegram.WebApp;tg.ready();tg.expand();
+        const BASE='https://earnflow-bot.vercel.app';
+        const uid=tg.initDataUnsafe?.user?.id;
+        let taskData=null,countdown;
+        try{const p=new URLSearchParams(location.search),d=p.get('data');if(d)taskData=JSON.parse(decodeURIComponent(d))}catch(e){}
 
-        const BASE_URL = 'https://earnflow-bot.vercel.app';
-        const userId = tg.initDataUnsafe?.user?.id;
-
-        // Parse task data from URL
-        let taskData = null;
-        try {
-            const params = new URLSearchParams(window.location.search);
-            const encoded = params.get('data');
-            if (encoded) taskData = JSON.parse(decodeURIComponent(encoded));
-        } catch(e) {}
-
-        // Elements
-        const joinScreen = document.getElementById('joinScreen');
-        const taskScreen = document.getElementById('taskScreen');
-        const adBtn = document.getElementById('adBtn');
-        const claimBtn = document.getElementById('claimBtn');
-        const timerEl = document.getElementById('timer');
-        const msgEl = document.getElementById('msg');
-        let countdown;
-
-        // Load all data
-        async function init() {
-            try {
-                // Check channel join
-                const checkRes = await fetch(`${BASE_URL}/api/webhook?action=check_join&user_id=${userId}`);
-                const checkData = await checkRes.json();
-
-                if (!checkData.joined) {
-                    const chRes = await fetch(`${BASE_URL}/api/webhook?action=get_channels`);
-                    const chData = await chRes.json();
-                    
-                    document.getElementById('channelList').innerHTML = '';
-                    if (chData.channels) {
-                        chData.channels.forEach(ch => {
-                            const link = ch.invite_link || 'https://t.me/' + (ch.channel_id || '').toString().replace('-100', '');
-                            document.getElementById('channelList').innerHTML += `
-                                <div class="channel-item">
-                                    <span>📢</span>
-                                    <a href="${link}" target="_blank">${ch.channel_name || 'চ্যানেল'}</a>
-                                </div>
-                            `;
-                        });
-                    }
-                    joinScreen.classList.remove('hidden');
-                    taskScreen.classList.add('hidden');
+        async function init(){
+            try{
+                const jr=await fetch(`${BASE}/api/webhook?action=check_join&user_id=${uid}`);
+                const jd=await jr.json();
+                if(!jd.joined){
+                    const cr=await fetch(`${BASE}/api/webhook?action=get_channels`);
+                    const cd=await cr.json();
+                    document.getElementById('channelList').innerHTML='';
+                    if(cd.channels)cd.channels.forEach(c=>{
+                        const l=c.invite_link||'https://t.me/'+(c.channel_id||'').toString().replace('-100','');
+                        document.getElementById('channelList').innerHTML+=`<div class="channel-item"><span>📢</span><a href="${l}" target="_blank">${c.channel_name||'চ্যানেল'}</a></div>`;
+                    });
+                    document.getElementById('joinScreen').classList.remove('hidden');
+                    document.getElementById('taskScreen').classList.add('hidden');
                     return;
                 }
-
-                // Already joined - load data
-                const userRes = await fetch(`${BASE_URL}/api/webhook?action=get_user&user_id=${userId}`);
-                const userData = await userRes.json();
-                document.getElementById('userBalance').textContent = '$' + (userData.balance || 0).toFixed(2);
-
-                if (taskData) {
-                    document.getElementById('taskIcon').textContent = taskData.icon || '📺';
-                    document.getElementById('taskTitle').textContent = taskData.title || 'টাস্ক';
-                    document.getElementById('taskReward').textContent = '💰 $' + (taskData.reward || '0');
-
-                    const remRes = await fetch(`${BASE_URL}/api/webhook?action=task_remaining&user_id=${userId}&task_id=${taskData.task_id}`);
-                    const remData = await remRes.json();
-                    document.getElementById('taskRemaining').textContent = (remData.remaining || 0) + '/' + (remData.daily_limit || 10);
+                const ur=await fetch(`${BASE}/api/webhook?action=get_user&user_id=${uid}`);
+                const ud=await ur.json();
+                document.getElementById('userBalance').textContent='$'+(ud.balance||0).toFixed(2);
+                if(taskData){
+                    document.getElementById('taskIcon').textContent=taskData.icon||'📺';
+                    document.getElementById('taskTitle').textContent=taskData.title||'টাস্ক';
+                    document.getElementById('taskReward').textContent='💰 $'+(taskData.reward||'0');
+                    const rr=await fetch(`${BASE}/api/webhook?action=task_remaining&user_id=${uid}&task_id=${taskData.task_id}`);
+                    const rd=await rr.json();
+                    document.getElementById('taskRemaining').textContent=(rd.remaining||0)+'/'+(rd.daily_limit||10);
                 }
-
-                joinScreen.classList.add('hidden');
-                taskScreen.classList.remove('hidden');
-
-            } catch(e) {
-                if (taskData) {
-                    document.getElementById('taskIcon').textContent = taskData.icon || '📺';
-                    document.getElementById('taskTitle').textContent = taskData.title || 'টাস্ক';
-                    document.getElementById('taskReward').textContent = '💰 $' + (taskData.reward || '0');
+                document.getElementById('joinScreen').classList.add('hidden');
+                document.getElementById('taskScreen').classList.remove('hidden');
+            }catch(e){
+                if(taskData){
+                    document.getElementById('taskIcon').textContent=taskData.icon||'📺';
+                    document.getElementById('taskTitle').textContent=taskData.title||'টাস্ক';
+                    document.getElementById('taskReward').textContent='💰 $'+(taskData.reward||'0');
                 }
-                joinScreen.classList.add('hidden');
-                taskScreen.classList.remove('hidden');
+                document.getElementById('joinScreen').classList.add('hidden');
+                document.getElementById('taskScreen').classList.remove('hidden');
             }
         }
 
-        // Verify join
-        document.getElementById('verifyBtn').addEventListener('click', async () => {
-            const btn = document.getElementById('verifyBtn');
-            btn.textContent = '⏳ চেক...';
-            btn.disabled = true;
-
-            const checkRes = await fetch(`${BASE_URL}/api/webhook?action=check_join&user_id=${userId}`);
-            const checkData = await checkRes.json();
-
-            if (checkData.joined) {
-                document.getElementById('joinMsg').className = 'msg show success';
-                document.getElementById('joinMsg').textContent = '✅ ভেরিফাইড!';
-                setTimeout(() => init(), 600);
-            } else {
-                document.getElementById('joinMsg').className = 'msg show error';
-                document.getElementById('joinMsg').textContent = '❌ জয়েন করেননি!';
-                btn.textContent = '✅ জয়েন করেছি';
-                btn.disabled = false;
-            }
+        document.getElementById('verifyBtn').addEventListener('click',async()=>{
+            const b=document.getElementById('verifyBtn');b.textContent='⏳';b.disabled=true;
+            const r=await fetch(`${BASE}/api/webhook?action=check_join&user_id=${uid}`);
+            const d=await r.json();
+            if(d.joined){document.getElementById('joinMsg').className='msg show success';document.getElementById('joinMsg').textContent='✅';setTimeout(init,600)}
+            else{document.getElementById('joinMsg').className='msg show error';document.getElementById('joinMsg').textContent='❌';b.textContent='✅ জয়েন করেছি';b.disabled=false}
         });
 
-        // Ad Button
-        adBtn.addEventListener('click', () => {
-            const adLink = taskData?.ad_link || 'https://google.com';
-            window.open(adLink, '_blank');
-
-            // Start timer
-            let sec = 15;
-            adBtn.disabled = true;
-            adBtn.style.opacity = '0.5';
-            timerEl.textContent = sec;
-            msgEl.className = 'msg show success';
-            msgEl.textContent = '⏳ ১৫ সেকেন্ড অপেক্ষা করুন...';
+        document.getElementById('adBtn').addEventListener('click',()=>{
+            window.open(taskData?.ad_link||'https://google.com','_blank');
+            document.getElementById('adBtn').disabled=true;
+            document.getElementById('adBtn').style.opacity='0.5';
+            let s=15;
+            document.getElementById('timer').textContent=s;
+            document.getElementById('msg').className='msg show success';
+            document.getElementById('msg').textContent='⏳ ১৫ সেকেন্ড অপেক্ষা...';
             tg.HapticFeedback.notification('success');
-
-            countdown = setInterval(() => {
-                sec--;
-                timerEl.textContent = sec;
-                if (sec <= 0) {
+            clearInterval(countdown);
+            countdown=setInterval(()=>{
+                s--;
+                document.getElementById('timer').textContent=s;
+                if(s<=0){
                     clearInterval(countdown);
-                    claimBtn.disabled = false;
-                    timerEl.textContent = '✓';
-                    msgEl.textContent = '✅ এখন রিওয়ার্ড নিতে পারেন!';
+                    document.getElementById('claimBtn').disabled=false;
+                    document.getElementById('timer').textContent='✓';
+                    document.getElementById('msg').textContent='✅ রিওয়ার্ড নিন!';
                 }
-            }, 1000);
+            },1000);
         });
 
-        // Claim Button
-        claimBtn.addEventListener('click', async () => {
-            claimBtn.textContent = '⏳...';
-            claimBtn.disabled = true;
-
-            try {
-                const res = await fetch(`${BASE_URL}/api/webhook`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'claim_task', user_id: userId, task_id: taskData?.task_id })
-                });
-                const result = await res.json();
-
-                if (result.success) {
-                    claimBtn.textContent = '✅ সম্পন্ন!';
-                    msgEl.className = 'msg show success';
-                    msgEl.textContent = `🎉 +$${result.reward} যোগ হয়েছে!`;
-                    document.getElementById('userBalance').textContent = '$' + result.new_balance.toFixed(2);
-                    tg.HapticFeedback.notification('success');
-                    setTimeout(() => tg.close(), 2000);
-                } else {
-                    claimBtn.textContent = '❌ ব্যর্থ';
-                    msgEl.className = 'msg show error';
-                    msgEl.textContent = result.message || 'এরর!';
-                    claimBtn.disabled = false;
-                }
-            } catch(e) {
-                claimBtn.textContent = '❌ এরর';
-                msgEl.className = 'msg show error';
-                msgEl.textContent = 'নেটওয়ার্ক এরর!';
-                claimBtn.disabled = false;
-            }
+        document.getElementById('claimBtn').addEventListener('click',async()=>{
+            const b=document.getElementById('claimBtn');b.textContent='⏳';b.disabled=true;
+            try{
+                const r=await fetch(`${BASE}/api/webhook`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'claim_task',user_id:uid,task_id:taskData?.task_id})});
+                const d=await r.json();
+                if(d.success){
+                    b.textContent='✅';document.getElementById('msg').textContent=`🎉 +$${d.reward}`;
+                    document.getElementById('userBalance').textContent='$'+d.new_balance.toFixed(2);
+                    tg.HapticFeedback.notification('success');setTimeout(()=>tg.close(),2000);
+                }else{b.textContent='🎁 রিওয়ার্ড নিন';b.disabled=false;document.getElementById('msg').className='msg show error';document.getElementById('msg').textContent=d.message||'এরর'}
+            }catch(e){b.textContent='🎁 রিওয়ার্ড নিন';b.disabled=false;document.getElementById('msg').className='msg show error';document.getElementById('msg').textContent='নেটওয়ার্ক এরর'}
         });
 
-        // Start
         init();
     </script>
 </body>
