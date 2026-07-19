@@ -62,16 +62,96 @@ bot.start(async (ctx) => {
 
 // ============ USER BUTTONS ============
 
+// Task list
 bot.hears('📺 টাস্ক', async (ctx) => {
     const { data: tasks } = await supabase.from('tasks').select('*').order('id', { ascending: true });
     if (!tasks || tasks.length === 0) return ctx.reply('⚠️ এখনো কোনো টাস্ক নেই।');
 
     const buttons = tasks.map(task => {
-        const data = encodeURIComponent(JSON.stringify({ task_id: task.id, title: task.title, reward: task.reward, icon: task.icon || '📺', ad_link: task.ad_link }));
-        return [{ text: `${task.icon || '📺'} ${task.title} - $${task.reward}`, web_app: { url: `${process.env.BASE_URL}/webapp/?data=${data}` } }];
+        return [{ text: `${task.icon || '📺'} ${task.title} - $${task.reward}`, callback_data: `task_${task.id}` }];
     });
 
     ctx.reply('📺 টাস্ক করুন:', { reply_markup: { inline_keyboard: buttons } });
+});
+
+// Task detail and complete
+bot.action(/task_(.+)/, async (ctx) => {
+    const taskId = ctx.match[1];
+    const userId = ctx.from.id;
+    const today = new Date().toISOString().split('T')[0];
+
+    const { data: task } = await supabase.from('tasks').select('*').eq('id', taskId).single();
+    if (!task) return ctx.answerCbQuery('টাস্ক পাওয়া যায়নি!');
+
+    // Check daily limit
+    const { data: comp } = await supabase
+        .from('task_completions')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('task_id', taskId)
+        .eq('completed_at', today)
+        .single();
+
+    const done = comp?.count_today || 0;
+    const remaining = task.daily_limit - done;
+
+    if (remaining <= 0) {
+        return ctx.answerCbQuery(`⚠️ আজকের লিমিট শেষ (${task.daily_limit} বার)`, { show_alert: true });
+    }
+
+    await ctx.answerCbQuery();
+
+    ctx.reply(`${task.icon || '📺'} **${task.title}**\n\n💰 রিওয়ার্ড: $${task.reward}\n📊 আজ বাকি: ${remaining}/${task.daily_limit}\n\n🔗 অ্যাড দেখতে নিচের বাটনে ক্লিক করুন:`, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '🔗 অ্যাড দেখুন', url: task.ad_link }],
+                [{ text: '✅ রিওয়ার্ড নিন', callback_data: `complete_${task.id}` }]
+            ]
+        }
+    });
+});
+
+// Complete task
+bot.action(/complete_(.+)/, async (ctx) => {
+    const taskId = ctx.match[1];
+    const userId = ctx.from.id;
+    const today = new Date().toISOString().split('T')[0];
+
+    const { data: task } = await supabase.from('tasks').select('*').eq('id', taskId).single();
+    if (!task) return ctx.answerCbQuery('টাস্ক পাওয়া যায়নি!', { show_alert: true });
+
+    // Check daily limit
+    const { data: comp } = await supabase
+        .from('task_completions')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('task_id', taskId)
+        .eq('completed_at', today)
+        .single();
+
+    const done = comp?.count_today || 0;
+
+    if (done >= task.daily_limit) {
+        return ctx.answerCbQuery(`⚠️ আজকের লিমিট শেষ!`, { show_alert: true });
+    }
+
+    // Save completion
+    if (comp) {
+        await supabase.from('task_completions').update({ count_today: comp.count_today + 1 }).eq('id', comp.id);
+    } else {
+        await supabase.from('task_completions').insert({ user_id: userId, task_id: taskId, completed_at: today, count_today: 1 });
+    }
+
+    // Add balance
+    await supabase.rpc('add_balance', { uid: userId, amount: task.reward });
+
+    // Get user
+    const { data: user } = await supabase.from('bot_users').select('balance').eq('user_id', userId).single();
+
+    await ctx.answerCbQuery('✅ রিওয়ার্ড যোগ হয়েছে!', { show_alert: true });
+    await ctx.deleteMessage();
+    ctx.reply(`✅ টাস্ক সম্পন্ন!\n\n📺 ${task.title}\n💰 +$${task.reward}\n💵 মোট ব্যালেন্স: $${user.balance.toFixed(2)}`);
 });
 
 bot.hears('💰 ব্যালেন্স', async (ctx) => {
