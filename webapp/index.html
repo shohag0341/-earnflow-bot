@@ -126,13 +126,21 @@
 
                 channelList.innerHTML = '';
                 data.channels.forEach(ch => {
-                    const link = ch.channel_id.toString().replace('-100', '');
-                    channelList.innerHTML += `
-                        <div class="channel-item">
-                            <span>📢</span>
-                            <a href="https://t.me/${link}" target="_blank">${ch.channel_name || 'চ্যানেল'}</a>
-                        </div>
-                    `;
+
+
+                    
+                   const link = ch.invite_link || `https://t.me/${ch.channel_id.toString().replace('-100', '')}`;
+channelList.innerHTML += `
+    <div class="channel-item">
+        <span>📢</span>
+        <a href="${link}" target="_blank">${ch.channel_name || 'চ্যানেল'}</a>
+    </div>
+`; 
+
+
+
+                    
+                    
                 });
             } catch (e) {
                 showTaskScreen();
