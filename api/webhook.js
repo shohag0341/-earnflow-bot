@@ -328,8 +328,56 @@ if (action === 'task_remaining' && user_id && req.query.task_id) {
         return res.status(200).send('EarnFlow Bot is running!');
     }
 
+
+
+    
     if (req.method === 'POST') {
-        try { await bot.handleUpdate(req.body, res); }
-        catch(e) { console.error(e); res.status(200).send('OK'); }
+    // Check if it's a custom API call from Mini App
+    if (req.body.action === 'claim_task') {
+        const { user_id, task_id } = req.body;
+        const today = new Date().toISOString().split('T')[0];
+
+        // Get task
+        const { data: task } = await supabase.from('tasks').select('*').eq('id', task_id).single();
+        if (!task) return res.status(200).json({ success: false, message: 'টাস্ক পাওয়া যায়নি।' });
+
+        // Check daily limit
+        const { data: comp } = await supabase
+            .from('task_completions')
+            .select('*')
+            .eq('user_id', user_id)
+            .eq('task_id', task_id)
+            .eq('completed_at', today)
+            .single();
+
+        if (comp && comp.count_today >= task.daily_limit) {
+            return res.status(200).json({ success: false, message: `আজকের লিমিট শেষ (${task.daily_limit} বার)` });
+        }
+
+        // Update task completion
+        if (comp) {
+            await supabase.from('task_completions').update({ count_today: comp.count_today + 1 }).eq('id', comp.id);
+        } else {
+            await supabase.from('task_completions').insert({ user_id, task_id, completed_at: today, count_today: 1 });
+        }
+
+        // Add balance
+        await supabase.rpc('add_balance', { uid: user_id, amount: task.reward });
+
+        // Get new balance
+        const { data: user } = await supabase.from('bot_users').select('balance').eq('user_id', user_id).single();
+
+        return res.status(200).json({ 
+            success: true, 
+            reward: task.reward, 
+            new_balance: user?.balance || 0 
+        });
     }
+
+    // Normal Telegram update
+    try { await bot.handleUpdate(req.body, res); }
+    catch(e) { console.error(e); res.status(200).send('OK'); }
+    }
+
+    
 };
