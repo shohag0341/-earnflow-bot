@@ -84,6 +84,9 @@ bot.hears('🏧 উইথড্র', (ctx) => ctx.reply('🏧 শীঘ্রই
 bot.hears('📞 সাপোর্ট', (ctx) => ctx.reply('📞 @admin'));
 
 // ============ TASK SYSTEM ============
+
+
+
 bot.action(/task_(.+)/, async (ctx) => {
     const taskId = ctx.match[1];
     const userId = ctx.from.id;
@@ -102,47 +105,78 @@ bot.action(/task_(.+)/, async (ctx) => {
 
     await ctx.answerCbQuery();
 
-    // Send initial message
+    // প্রথম মেসেজ - শুধু অ্যাড বাটন
     const msg = await ctx.reply(
-        `${task.icon || '📺'} **${task.title}**\n\n💰 রিওয়ার্ড: $${task.reward}\n📊 আজ বাকি: ${remaining}/${task.daily_limit}\n\n⏳ **১৫** সেকেন্ড অপেক্ষা করুন...`,
+        `${task.icon || '📺'} **${task.title}**\n\n💰 রিওয়ার্ড: $${task.reward}\n📊 আজ বাকি: ${remaining}/${task.daily_limit}\n\n🔗 নিচের বাটনে ক্লিক করে অ্যাড দেখুন\n⏳ ১৫ সেকেন্ড পর রিওয়ার্ড নিন`,
         {
             parse_mode: 'Markdown',
             reply_markup: {
                 inline_keyboard: [
                     [{ text: '🔗 অ্যাড দেখুন', url: task.ad_link }],
-                    [{ text: '⏳ ১৫ সেকেন্ড...', callback_data: `waiting` }]
+                    [{ text: '⏳ ১৫ সেকেন্ড অপেক্ষা করুন...', callback_data: 'countdown_start' }]
                 ]
             }
         }
     );
 
-    // Auto countdown
+    // Store task info for countdown
+    sessions[`countdown_${msg.message_id}`] = {
+        taskId: task.id,
+        taskTitle: task.title,
+        taskReward: task.reward,
+        remaining: remaining,
+        dailyLimit: task.daily_limit,
+        chatId: msg.chat.id,
+        messageId: msg.message_id
+    };
+});
+
+// Start countdown
+bot.action('countdown_start', async (ctx) => {
+    const msgId = ctx.callbackQuery.message.message_id;
+    const data = sessions[`countdown_${msgId}`];
+    
+    if (!data) {
+        return ctx.answerCbQuery('⚠️ সেশন শেষ! আবার টাস্ক সিলেক্ট করুন।', { show_alert: true });
+    }
+
+    await ctx.answerCbQuery('⏳ কাউন্টডাউন শুরু...', { show_alert: true });
+
+    // Remove old button, show countdown
+    await ctx.editMessageReplyMarkup({
+        inline_keyboard: [
+            [{ text: '🔗 অ্যাড দেখুন', url: `https://t.me` }], // placeholder
+            [{ text: '⏳ ১৫ সেকেন্ড...', callback_data: 'noop' }]
+        ]
+    });
+
+    // Countdown 15 seconds
     for (let i = 14; i >= 0; i--) {
         await new Promise(r => setTimeout(r, 1000));
         try {
             if (i > 0) {
                 await ctx.telegram.editMessageText(
-                    msg.chat.id, msg.message_id, null,
-                    `${task.icon || '📺'} **${task.title}**\n\n💰 রিওয়ার্ড: $${task.reward}\n📊 আজ বাকি: ${remaining}/${task.daily_limit}\n\n⏳ **${i}** সেকেন্ড অপেক্ষা করুন...`,
+                    data.chatId, data.messageId, null,
+                    `📺 **${data.taskTitle}**\n\n💰 রিওয়ার্ড: $${data.taskReward}\n📊 আজ বাকি: ${data.remaining}/${data.dailyLimit}\n\n⏳ **${i}** সেকেন্ড অপেক্ষা করুন...`,
                     {
                         parse_mode: 'Markdown',
                         reply_markup: {
                             inline_keyboard: [
-                                [{ text: '🔗 অ্যাড দেখুন', url: task.ad_link }],
-                                [{ text: `⏳ ${i} সেকেন্ড...`, callback_data: `waiting` }]
+                                [{ text: '🔗 অ্যাড দেখুন', url: `https://t.me` }],
+                                [{ text: `⏳ ${i} সেকেন্ড...`, callback_data: 'noop' }]
                             ]
                         }
                     }
                 );
             } else {
                 await ctx.telegram.editMessageText(
-                    msg.chat.id, msg.message_id, null,
-                    `${task.icon || '📺'} **${task.title}**\n\n💰 রিওয়ার্ড: $${task.reward}\n📊 আজ বাকি: ${remaining}/${task.daily_limit}\n\n✅ এখন রিওয়ার্ড নিন!`,
+                    data.chatId, data.messageId, null,
+                    `📺 **${data.taskTitle}**\n\n💰 রিওয়ার্ড: $${data.taskReward}\n📊 আজ বাকি: ${data.remaining}/${data.dailyLimit}\n\n✅ এখন রিওয়ার্ড নিন!`,
                     {
                         parse_mode: 'Markdown',
                         reply_markup: {
                             inline_keyboard: [
-                                [{ text: '🎁 রিওয়ার্ড নিন', callback_data: `complete_${task.id}` }]
+                                [{ text: '🎁 রিওয়ার্ড নিন', callback_data: `complete_${data.taskId}` }]
                             ]
                         }
                     }
@@ -150,7 +184,16 @@ bot.action(/task_(.+)/, async (ctx) => {
             }
         } catch(e) {}
     }
+
+    delete sessions[`countdown_${msgId}`];
 });
+
+bot.action('noop', async (ctx) => {
+    await ctx.answerCbQuery('⏳ অপেক্ষা করুন...', { show_alert: true });
+});
+
+
+
 
 bot.action('waiting', async (ctx) => {
     await ctx.answerCbQuery('⏳ ১৫ সেকেন্ড অপেক্ষা করুন...', { show_alert: true });
