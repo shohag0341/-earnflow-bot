@@ -403,10 +403,17 @@ module.exports = async (req, res) => {
         const { action, user_id } = req.query;
 
         // Get channels list
+
+
+
+        
         if (action === 'get_channels') {
-            const { data: channels } = await supabase.from('channels').select('*');
-            return res.status(200).json({ channels: channels || [] });
+    const { data: channels } = await supabase.from('channels').select('channel_id, channel_name, invite_link');
+    return res.status(200).json({ channels: channels || [] });
         }
+
+
+        
 
         // Check if user joined all channels
         if (action === 'check_join' && user_id) {
