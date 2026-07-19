@@ -383,6 +383,44 @@ bot.on('web_app_data', async (ctx) => {
 
 // Webhook handler
 module.exports = async (req, res) => {
+    if (req.method === 'GET') {
+        const { action, user_id } = req.query;
+
+        // Get channels list
+        if (action === 'get_channels') {
+            const { data: channels } = await supabase.from('channels').select('*');
+            return res.status(200).json({ channels: channels || [] });
+        }
+
+        // Check if user joined all channels
+        if (action === 'check_join' && user_id) {
+            const { data: channels } = await supabase.from('channels').select('*');
+            
+            if (!channels || channels.length === 0) {
+                return res.status(200).json({ joined: true });
+            }
+
+            for (const channel of channels) {
+                try {
+                    const response = await fetch(
+                        `https://api.telegram.org/bot${process.env.BOT_TOKEN}/getChatMember?chat_id=${channel.channel_id}&user_id=${user_id}`
+                    );
+                    const result = await response.json();
+                    
+                    if (!result.ok || ['left', 'kicked'].includes(result.result?.status)) {
+                        return res.status(200).json({ joined: false });
+                    }
+                } catch (e) {
+                    return res.status(200).json({ joined: false });
+                }
+            }
+
+            return res.status(200).json({ joined: true });
+        }
+
+        return res.status(200).send('EarnFlow Bot is running!');
+    }
+
     if (req.method === 'POST') {
         try {
             await bot.handleUpdate(req.body, res);
@@ -390,7 +428,5 @@ module.exports = async (req, res) => {
             console.error('Error:', error);
             res.status(200).send('OK');
         }
-    } else {
-        res.status(200).send('EarnFlow Bot is running!');
     }
 };
