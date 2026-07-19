@@ -1,15 +1,6 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "webapp/**",
-      "use": "@vercel/static"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/webapp/(.*)",
-      "dest": "/webapp/$1"
-    }
+  "outputDirectory": "webapp",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
