@@ -3,6 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const ADMIN_ID = parseInt(process.env.ADMIN_ID);
 
 // Helper: Get or Create User
 async function getUser(userId, username, firstName) {
@@ -14,7 +15,6 @@ async function getUser(userId, username, firstName) {
 
     if (user) return user;
 
-    // Create new user
     const referCode = `REF${userId}`;
     const { data: newUser } = await supabase
         .from('bot_users')
@@ -31,6 +31,65 @@ async function getUser(userId, username, firstName) {
     return newUser;
 }
 
+// Helper: Check Channel Join
+async function checkChannels(ctx) {
+    const { data: channels } = await supabase.from('channels').select('*');
+    
+    if (!channels || channels.length === 0) return true;
+
+    const notJoined = [];
+    
+    for (const channel of channels) {
+        try {
+            const member = await ctx.telegram.getChatMember(channel.channel_id, ctx.from.id);
+            if (['left', 'kicked', 'restricted'].includes(member.status)) {
+                notJoined.push(channel);
+            }
+        } catch (e) {
+            // Channel not accessible
+        }
+    }
+
+    if (notJoined.length > 0) {
+        const buttons = notJoined.map(ch => {
+            return [{ text: `📢 ${ch.channel_name || 'চ্যানেল'} জয়েন করুন`, url: `https://t.me/${ch.channel_id.toString().replace('-100', '')}` }];
+        });
+        buttons.push([{ text: '✅ জয়েন করেছি', callback_data: 'check_join' }]);
+
+        await ctx.reply('⚠️ বট ব্যবহার করতে নিচের চ্যানেলগুলোতে জয়েন করুন:', {
+            reply_markup: { inline_keyboard: buttons }
+        });
+        return false;
+    }
+
+    return true;
+}
+
+// Channel Join Check Callback
+bot.action('check_join', async (ctx) => {
+    const joined = await checkChannels(ctx);
+    if (joined) {
+        await ctx.deleteMessage();
+        await ctx.reply('✅ ভেরিফাইড! এখন বট ব্যবহার করতে পারবেন।\n\n/start দিয়ে শুরু করুন।');
+    } else {
+        await ctx.answerCbQuery('❌ এখনো সব চ্যানেলে জয়েন করেননি!', { show_alert: true });
+    }
+});
+
+// Middleware for channel check
+bot.use(async (ctx, next) => {
+    if (ctx.message?.text?.startsWith('/start')) {
+        const args = ctx.message.text.split(' ');
+        if (args[1]) {
+            // Referral link - skip channel check temporarily
+            return next();
+        }
+        const joined = await checkChannels(ctx);
+        if (!joined) return;
+    }
+    return next();
+});
+
 // Start Command
 bot.start(async (ctx) => {
     const userId = ctx.from.id;
@@ -38,13 +97,11 @@ bot.start(async (ctx) => {
     const firstName = ctx.from.first_name;
     const args = ctx.message.text.split(' ');
 
-    // Get/Create user
     const user = await getUser(userId, username, firstName);
 
     if (args[1]) {
         const refCode = args[1];
         
-        // Check if referral code is valid
         const { data: referrer } = await supabase
             .from('bot_users')
             .select('*')
@@ -52,7 +109,6 @@ bot.start(async (ctx) => {
             .single();
 
         if (referrer && referrer.user_id !== userId) {
-            // Check if already referred
             const { data: existingRef } = await supabase
                 .from('referrals')
                 .select('*')
@@ -60,49 +116,41 @@ bot.start(async (ctx) => {
                 .single();
 
             if (!existingRef) {
-                // Add referral record
                 await supabase.from('referrals').insert({
                     referrer_id: referrer.user_id,
                     referred_id: userId,
                     reward_given: 0.05
                 });
 
-                // Update referrer
                 await supabase.rpc('increment_refer_count', { uid: referrer.user_id });
-
-                // Update referrer balance +0.05
                 await supabase.rpc('add_balance', { uid: referrer.user_id, amount: 0.05 });
                 await supabase.rpc('add_refer_earnings', { uid: referrer.user_id, amount: 0.05 });
-
-                // Update referred user balance +0.05
                 await supabase.rpc('add_balance', { uid: userId, amount: 0.05 });
 
-                // Notify referrer
                 ctx.telegram.sendMessage(referrer.user_id, `🎉 নতুন রেফারেল! আপনি পেয়েছেন $0.05`);
 
-                ctx.reply(`👋 স্বাগতম!\n\nআপনি ${referrer.first_name || 'ইউজার'}-এর রেফারেল হয়ে জয়েন করেছেন।\n\n💰 আপনি $0.05 বোনাস পেয়েছেন!`);
-            } else {
-                ctx.reply('👋 স্বাগতম! আপনি ইতিমধ্যেই রেফারেল হিসেবে জয়েন করেছেন।');
+                return ctx.reply(`👋 স্বাগতম!\n\nআপনি ${referrer.first_name || 'ইউজার'}-এর রেফারেল হয়ে জয়েন করেছেন।\n\n💰 আপনি $0.05 বোনাস পেয়েছেন!`);
             }
-        } else {
-            ctx.reply('👋 স্বাগতম EarnFlow বটে!');
         }
-    } else {
-        ctx.reply(`👋 স্বাগতম EarnFlow বটে, ${firstName || 'ইউজার'}!\n\n💰 টাস্ক করে টাকা ইনকাম করুন\n👥 রেফারেল করে বোনাস পান\n\n⏳ টাস্ক দেখতে নিচের বাটনে ক্লিক করুন।`, {
-            reply_markup: {
-                keyboard: [
-                    ['📺 টাস্ক', '👥 রেফারেল'],
-                    ['💰 ব্যালেন্স', '🏧 উইথড্র'],
-                    ['🏆 লিডারবোর্ড', '📞 সাপোর্ট']
-                ],
-                resize_keyboard: true
-            }
-        });
     }
+
+    return ctx.reply(`👋 স্বাগতম EarnFlow বটে, ${firstName || 'ইউজার'}!\n\n💰 টাস্ক করে টাকা ইনকাম করুন\n👥 রেফারেল করে বোনাস পান\n\n⏳ টাস্ক দেখতে নিচের বাটনে ক্লিক করুন।`, {
+        reply_markup: {
+            keyboard: [
+                ['📺 টাস্ক', '👥 রেফারেল'],
+                ['💰 ব্যালেন্স', '🏧 উইথড্র'],
+                ['🏆 লিডারবোর্ড', '📞 সাপোর্ট']
+            ],
+            resize_keyboard: true
+        }
+    });
 });
 
 // Task Button
 bot.hears('📺 টাস্ক', async (ctx) => {
+    const joined = await checkChannels(ctx);
+    if (!joined) return;
+
     const { data: tasks } = await supabase
         .from('tasks')
         .select('*')
@@ -130,13 +178,18 @@ bot.hears('📺 টাস্ক', async (ctx) => {
 
 // Balance Button
 bot.hears('💰 ব্যালেন্স', async (ctx) => {
+    const joined = await checkChannels(ctx);
+    if (!joined) return;
+
     const user = await getUser(ctx.from.id);
-    
     ctx.reply(`💰 আপনার ব্যালেন্স\n\n💵 মোট: $${user.balance.toFixed(2)}\n👥 রেফারেল: ${user.refer_count} জন\n📊 রেফারেল আর্নিং: $${user.refer_earnings.toFixed(2)}`);
 });
 
 // Referral Button
 bot.hears('👥 রেফারেল', async (ctx) => {
+    const joined = await checkChannels(ctx);
+    if (!joined) return;
+
     const user = await getUser(ctx.from.id);
     const refLink = `https://t.me/${ctx.botInfo.username}?start=${user.refer_code}`;
     
@@ -145,8 +198,7 @@ bot.hears('👥 রেফারেল', async (ctx) => {
     });
 });
 
-// Other Buttons
-bot.hears('🏧 উইথড্র', (ctx) => ctx.reply('🏧 উইথড্র সিস্টেম শীঘ্রই আসছে...'));
+// Leaderboard
 bot.hears('🏆 লিডারবোর্ড', async (ctx) => {
     const { data: topUsers } = await supabase
         .from('bot_users')
@@ -167,7 +219,181 @@ bot.hears('🏆 লিডারবোর্ড', async (ctx) => {
 
     ctx.reply(msg);
 });
+
+bot.hears('🏧 উইথড্র', (ctx) => ctx.reply('🏧 উইথড্র সিস্টেম শীঘ্রই আসছে...'));
 bot.hears('📞 সাপোর্ট', (ctx) => ctx.reply('📞 সাপোর্ট: @admin'));
+
+// ============ ADMIN COMMANDS ============
+
+// Add Channel
+bot.command('addchannel', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+        return ctx.reply('⚠️ ব্যবহার: /addchannel @channelusername');
+    }
+
+    const channelUsername = args[1].replace('@', '');
+    
+    try {
+        const chat = await ctx.telegram.getChat(`@${channelUsername}`);
+        
+        const { data: existing } = await supabase
+            .from('channels')
+            .select('*')
+            .eq('channel_id', chat.id)
+            .single();
+
+        if (existing) {
+            return ctx.reply('⚠️ এই চ্যানেলটি আগেই যোগ করা আছে!');
+        }
+
+        await supabase.from('channels').insert({
+            channel_id: chat.id,
+            channel_name: chat.title
+        });
+
+        ctx.reply(`✅ চ্যানেল যোগ করা হয়েছে: ${chat.title}`);
+    } catch (e) {
+        ctx.reply('❌ চ্যানেল পাওয়া যায়নি! বটকে চ্যানেলে অ্যাডমিন করুন।');
+    }
+});
+
+// Remove Channel
+bot.command('removechannel', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+        return ctx.reply('⚠️ ব্যবহার: /removechannel @channelusername');
+    }
+
+    const channelUsername = args[1].replace('@', '');
+
+    try {
+        const chat = await ctx.telegram.getChat(`@${channelUsername}`);
+        
+        await supabase
+            .from('channels')
+            .delete()
+            .eq('channel_id', chat.id);
+
+        ctx.reply(`✅ চ্যানেল রিমুভ করা হয়েছে: ${chat.title}`);
+    } catch (e) {
+        ctx.reply('❌ চ্যানেল পাওয়া যায়নি!');
+    }
+});
+
+// Channel List
+bot.command('channels', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+
+    const { data: channels } = await supabase.from('channels').select('*');
+
+    if (!channels || channels.length === 0) {
+        return ctx.reply('⚠️ কোনো চ্যানেল যোগ করা নেই।');
+    }
+
+    let msg = '📢 চ্যানেল লিস্ট:\n\n';
+    channels.forEach((ch, i) => {
+        msg += `${i + 1}. ${ch.channel_name} (${ch.channel_id})\n`;
+    });
+
+    ctx.reply(msg);
+});
+
+// Add Task (Admin)
+bot.command('addtask', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+
+    const args = ctx.message.text.split('|');
+    if (args.length < 3) {
+        return ctx.reply('⚠️ ব্যবহার:\n/addtask টাস্ক টাইটেল | রিওয়ার্ড | অ্যাড লিংক | আইকন | ডেইলি লিমিট\n\nউদাহরণ:\n/addtask ভিডিও দেখুন | 0.01 | https://youtube.com | 📺 | 10');
+    }
+
+    const title = args[0].replace('/addtask ', '').trim();
+    const reward = parseFloat(args[1].trim());
+    const adLink = args[2].trim();
+    const icon = args[3]?.trim() || '📺';
+    const dailyLimit = parseInt(args[4]?.trim() || '10');
+
+    await supabase.from('tasks').insert({
+        title,
+        reward,
+        ad_link: adLink,
+        icon,
+        daily_limit: dailyLimit
+    });
+
+    ctx.reply(`✅ টাস্ক যোগ করা হয়েছে!\n\n${icon} ${title}\n💰 $${reward}\n📊 লিমিট: ${dailyLimit}/দিন`);
+});
+
+// Admin Panel
+bot.command('admin', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+
+    ctx.reply('👑 অ্যাডমিন প্যানেল\n\nকমান্ডসমূহ:\n/addchannel @username - চ্যানেল যোগ\n/removechannel @username - চ্যানেল রিমুভ\n/channels - চ্যানেল লিস্ট\n/addtask - টাস্ক যোগ\n/removetask id - টাস্ক রিমুভ\n/tasks - টাস্ক লিস্ট\n/users - ইউজার লিস্ট', {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '📢 চ্যানেল লিস্ট', callback_data: 'admin_channels' }],
+                [{ text: '📺 টাস্ক লিস্ট', callback_data: 'admin_tasks' }],
+                [{ text: '👥 ইউজার লিস্ট', callback_data: 'admin_users' }]
+            ]
+        }
+    });
+});
+
+// Task List
+bot.command('tasks', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+
+    const { data: tasks } = await supabase.from('tasks').select('*');
+
+    if (!tasks || tasks.length === 0) {
+        return ctx.reply('⚠️ কোনো টাস্ক নেই।');
+    }
+
+    let msg = '📺 টাস্ক লিস্ট:\n\n';
+    tasks.forEach(t => {
+        msg += `🆔 ${t.id}: ${t.icon} ${t.title} - $${t.reward} (${t.daily_limit}/দিন)\n`;
+    });
+
+    ctx.reply(msg);
+});
+
+// Remove Task
+bot.command('removetask', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+
+    const taskId = parseInt(ctx.message.text.split(' ')[1]);
+    if (!taskId) return ctx.reply('⚠️ /removetask টাস্ক_আইডি');
+
+    await supabase.from('tasks').delete().eq('id', taskId);
+    ctx.reply(`✅ টাস্ক #${taskId} রিমুভ করা হয়েছে।`);
+});
+
+// Users List
+bot.command('users', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+
+    const { data: users } = await supabase
+        .from('bot_users')
+        .select('*')
+        .order('joined_at', { ascending: false })
+        .limit(20);
+
+    if (!users || users.length === 0) {
+        return ctx.reply('⚠️ কোনো ইউজার নেই।');
+    }
+
+    let msg = `👥 ইউজার লিস্ট (সর্বশেষ ২০):\n\n`;
+    users.forEach(u => {
+        msg += `🆔 ${u.user_id}: ${u.first_name || 'N/A'} - $${u.balance.toFixed(2)}\n`;
+    });
+
+    ctx.reply(msg);
+});
 
 // WebApp Data Handler
 bot.on('web_app_data', async (ctx) => {
@@ -178,7 +404,6 @@ bot.on('web_app_data', async (ctx) => {
         const taskId = data.task_id;
         const today = new Date().toISOString().split('T')[0];
 
-        // Get task info
         const { data: task } = await supabase
             .from('tasks')
             .select('*')
@@ -189,7 +414,6 @@ bot.on('web_app_data', async (ctx) => {
             return ctx.reply('❌ টাস্ক পাওয়া যায়নি।');
         }
 
-        // Check daily limit
         const { data: completion } = await supabase
             .from('task_completions')
             .select('*')
@@ -202,7 +426,6 @@ bot.on('web_app_data', async (ctx) => {
             return ctx.reply(`⚠️ আজকের লিমিট শেষ! (${task.daily_limit} বার)`);
         }
 
-        // Update task completion
         if (completion) {
             await supabase
                 .from('task_completions')
@@ -217,7 +440,6 @@ bot.on('web_app_data', async (ctx) => {
             });
         }
 
-        // Add balance
         await supabase.rpc('add_balance', { uid: userId, amount: task.reward });
 
         ctx.reply(`✅ টাস্ক সম্পন্ন!\n💰 $${task.reward} যোগ হয়েছে।`);
