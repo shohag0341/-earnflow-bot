@@ -4,7 +4,6 @@ const { createClient } = require('@supabase/supabase-js');
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const ADMIN_ID = parseInt(process.env.ADMIN_ID);
-
 const sessions = {};
 
 async function getUser(userId, username, firstName) {
@@ -18,32 +17,28 @@ async function getUser(userId, username, firstName) {
     return newUser;
 }
 
-// ============ START ============
 bot.start(async (ctx) => {
     const userId = ctx.from.id;
-    const username = ctx.from.username;
-    const firstName = ctx.from.first_name;
     const args = ctx.message.text.split(' ');
-    const user = await getUser(userId, username, firstName);
+    const user = await getUser(userId, ctx.from.username, ctx.from.first_name);
 
     if (args[1]) {
-        const refCode = args[1];
-        const { data: referrer } = await supabase.from('bot_users').select('*').eq('refer_code', refCode).single();
+        const { data: referrer } = await supabase.from('bot_users').select('*').eq('refer_code', args[1]).single();
         if (referrer && referrer.user_id !== userId) {
-            const { data: existingRef } = await supabase.from('referrals').select('*').eq('referred_id', userId).single();
-            if (!existingRef) {
+            const { data: ref } = await supabase.from('referrals').select('*').eq('referred_id', userId).single();
+            if (!ref) {
                 await supabase.from('referrals').insert({ referrer_id: referrer.user_id, referred_id: userId, reward_given: 0.05 });
                 await supabase.rpc('increment_refer_count', { uid: referrer.user_id });
                 await supabase.rpc('add_balance', { uid: referrer.user_id, amount: 0.05 });
                 await supabase.rpc('add_refer_earnings', { uid: referrer.user_id, amount: 0.05 });
                 await supabase.rpc('add_balance', { uid: userId, amount: 0.05 });
-                ctx.telegram.sendMessage(referrer.user_id, `🎉 নতুন রেফারেল! +$0.05`);
+                ctx.telegram.sendMessage(referrer.user_id, '🎉 নতুন রেফারেল! +$0.05');
                 return ctx.reply(`👋 স্বাগতম! ${referrer.first_name || 'ইউজার'}-এর রেফারেল।\n💰 +$0.05 বোনাস!`);
             }
         }
     }
 
-    return ctx.reply(`👋 স্বাগতম EarnFlow বটে, ${firstName || 'ইউজার'}!\n\n💰 টাস্ক করে ইনকাম করুন\n👥 রেফারেল করে বোনাস পান`, {
+    return ctx.reply(`👋 স্বাগতম EarnFlow বটে, ${ctx.from.first_name || 'ইউজার'}!\n\n💰 টাস্ক করে ইনকাম করুন\n👥 রেফারেল করে বোনাস পান`, {
         reply_markup: {
             keyboard: [['📺 টাস্ক', '👥 রেফারেল'], ['💰 ব্যালেন্স', '🏧 উইথড্র'], ['🏆 লিডারবোর্ড', '📞 সাপোর্ট']],
             resize_keyboard: true
@@ -51,190 +46,86 @@ bot.start(async (ctx) => {
     });
 });
 
-// ============ USER MENU ============
 bot.hears('📺 টাস্ক', async (ctx) => {
     const { data: tasks } = await supabase.from('tasks').select('*').order('id', { ascending: true });
     if (!tasks || tasks.length === 0) return ctx.reply('⚠️ কোনো টাস্ক নেই।');
     const buttons = tasks.map(task => {
-        const data = encodeURIComponent(JSON.stringify({ task_id: task.id, title: task.title, reward: task.reward, icon: task.icon || '📺', ad_link: task.ad_link }));
-        return [{ text: `${task.icon || '📺'} ${task.title} - $${task.reward}`, web_app: { url: `${process.env.BASE_URL}/webapp/?data=${data}` } }];
+        const d = encodeURIComponent(JSON.stringify({ task_id: task.id, title: task.title, reward: task.reward, icon: task.icon || '📺', ad_link: task.ad_link }));
+        return [{ text: `${task.icon || '📺'} ${task.title} - $${task.reward}`, web_app: { url: `${process.env.BASE_URL}/webapp/?data=${d}` } }];
     });
-    ctx.reply('📺 টাস্ক করুন:', { reply_markup: { inline_keyboard: buttons } });
+    ctx.reply('📺 টাস্ক:', { reply_markup: { inline_keyboard: buttons } });
 });
 
 bot.hears('💰 ব্যালেন্স', async (ctx) => {
     const user = await getUser(ctx.from.id);
-    ctx.reply(`💰 ব্যালেন্স\n\n💵 মোট: $${user.balance.toFixed(2)}\n👥 রেফারেল: ${user.refer_count} জন\n📊 রেফারেল আর্নিং: $${user.refer_earnings.toFixed(2)}`);
+    ctx.reply(`💰 ব্যালেন্স\n\n💵 মোট: $${user.balance.toFixed(2)}\n👥 রেফারেল: ${user.refer_count} জন`);
 });
 
 bot.hears('👥 রেফারেল', async (ctx) => {
     const user = await getUser(ctx.from.id);
-    const refLink = `https://t.me/${ctx.botInfo.username}?start=${user.refer_code}`;
-    ctx.reply(`👥 রেফারেল\n\n🔗 লিংক:\n\`${refLink}\`\n\n📊 রেফারেল: ${user.refer_count} জন\n💰 আর্নিং: $${user.refer_earnings.toFixed(2)}\n\nপ্রতি রেফারেলে $0.05!`, { parse_mode: 'Markdown' });
+    ctx.reply(`👥 রেফারেল\n\n🔗 লিংক:\n\`https://t.me/${ctx.botInfo.username}?start=${user.refer_code}\`\n\n📊 রেফারেল: ${user.refer_count} জন\n💰 আর্নিং: $${user.refer_earnings.toFixed(2)}`, { parse_mode: 'Markdown' });
 });
 
 bot.hears('🏆 লিডারবোর্ড', async (ctx) => {
     const { data: top } = await supabase.from('bot_users').select('first_name, balance').order('balance', { ascending: false }).limit(10);
     if (!top || top.length === 0) return ctx.reply('🏆 এখনো কেউ নেই।');
     let msg = '🏆 টপ ১০\n\n';
-    top.forEach((u, i) => { const m = ['🥇','🥈','🥉']; msg += `${m[i]||(i+1+'️⃣')} ${u.first_name||'ইউজার'}: $${u.balance.toFixed(2)}\n`; });
+    top.forEach((u, i) => { msg += `${['🥇','🥈','🥉'][i] || (i+1)+'️⃣'} ${u.first_name||'ইউজার'}: $${u.balance.toFixed(2)}\n`; });
     ctx.reply(msg);
 });
 
 bot.hears('🏧 উইথড্র', (ctx) => ctx.reply('🏧 শীঘ্রই আসছে...'));
 bot.hears('📞 সাপোর্ট', (ctx) => ctx.reply('📞 @admin'));
 
-// ============ ADMIN PANEL ============
-bot.command('admin', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return;
-    ctx.reply('👑 প্যানেল\n/addtask | /removetask | /tasks\n/addchannel | /removechannel | /channels\n/users');
-});
+// Admin commands
+bot.command('admin', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; ctx.reply('👑 /addtask /removetask /tasks /addchannel /removechannel /channels /users'); });
+bot.command('addtask', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; sessions[ctx.from.id] = { action: 'addtask', step: 'title' }; ctx.reply('📝 টাইটেল:'); });
+bot.command('removetask', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; const { data: t } = await supabase.from('tasks').select('id,title'); if (!t?.length) return ctx.reply('⚠️ নেই'); ctx.reply('🗑️ আইডি:\n'+t.map(x=>`🆔 ${x.id}: ${x.title}`).join('\n')); sessions[ctx.from.id]={action:'removetask',step:'confirm'}; });
+bot.command('tasks', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; const { data: t } = await supabase.from('tasks').select('*'); if (!t?.length) return ctx.reply('⚠️ নেই'); ctx.reply('📺\n'+t.map(x=>`🆔 ${x.id}: ${x.title} - $${x.reward}`).join('\n')); });
+bot.command('addchannel', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; sessions[ctx.from.id] = { action: 'addchannel', step: 'username' }; ctx.reply('📢 @username:'); });
+bot.command('removechannel', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; const { data: c } = await supabase.from('channels').select('*'); if (!c?.length) return ctx.reply('⚠️ নেই'); ctx.reply('🗑️ আইডি:\n'+c.map(x=>`🆔 ${x.id}: ${x.channel_name}`).join('\n')); sessions[ctx.from.id]={action:'removechannel',step:'confirm'}; });
+bot.command('channels', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; const { data: c } = await supabase.from('channels').select('*'); if (!c?.length) return ctx.reply('⚠️ নেই'); ctx.reply('📢\n'+c.map(x=>`🆔 ${x.id}: ${x.channel_name}`).join('\n')); });
+bot.command('users', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; const { data: u } = await supabase.from('bot_users').select('*').order('joined_at',{ascending:false}).limit(20); if (!u?.length) return ctx.reply('⚠️ নেই'); ctx.reply('👥\n'+u.map(x=>`🆔 ${x.user_id}: ${x.first_name||'N/A'} - $${x.balance.toFixed(2)}`).join('\n')); });
+bot.command('cancel', async (ctx) => { delete sessions[ctx.from.id]; ctx.reply('❌ বাতিল'); });
 
-bot.command('addtask', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return;
-    sessions[ctx.from.id] = { action: 'addtask', step: 'title' };
-    ctx.reply('📝 টাইটেল লিখুন:');
-});
-
-bot.command('removetask', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return;
-    const { data: tasks } = await supabase.from('tasks').select('id, title');
-    if (!tasks || tasks.length === 0) return ctx.reply('⚠️ কোনো টাস্ক নেই।');
-    let msg = '🗑️ আইডি লিখুন:\n\n';
-    tasks.forEach(t => { msg += `🆔 ${t.id}: ${t.title}\n`; });
-    sessions[ctx.from.id] = { action: 'removetask', step: 'confirm' };
-    ctx.reply(msg);
-});
-
-bot.command('tasks', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return;
-    const { data: tasks } = await supabase.from('tasks').select('*');
-    if (!tasks || tasks.length === 0) return ctx.reply('⚠️ কোনো টাস্ক নেই।');
-    let msg = '📺 টাস্ক:\n\n';
-    tasks.forEach(t => { msg += `🆔 ${t.id}: ${t.title} - $${t.reward}\n`; });
-    ctx.reply(msg);
-});
-
-bot.command('addchannel', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return;
-    sessions[ctx.from.id] = { action: 'addchannel', step: 'username' };
-    ctx.reply('📢 ইউজারনেম (@ দিয়ে):');
-});
-
-bot.command('removechannel', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return;
-    const { data: channels } = await supabase.from('channels').select('*');
-    if (!channels || channels.length === 0) return ctx.reply('⚠️ কোনো চ্যানেল নেই।');
-    let msg = '🗑️ আইডি লিখুন:\n\n';
-    channels.forEach(ch => { msg += `🆔 ${ch.id}: ${ch.channel_name}\n`; });
-    sessions[ctx.from.id] = { action: 'removechannel', step: 'confirm' };
-    ctx.reply(msg);
-});
-
-bot.command('channels', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return;
-    const { data: channels } = await supabase.from('channels').select('*');
-    if (!channels || channels.length === 0) return ctx.reply('⚠️ কোনো চ্যানেল নেই।');
-    let msg = '📢 চ্যানেল:\n\n';
-    channels.forEach(ch => { msg += `🆔 ${ch.id}: ${ch.channel_name}\n`; });
-    ctx.reply(msg);
-});
-
-bot.command('users', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) return;
-    const { data: users } = await supabase.from('bot_users').select('*').order('joined_at', { ascending: false }).limit(20);
-    if (!users || users.length === 0) return ctx.reply('⚠️ কোনো ইউজার নেই।');
-    let msg = '👥 ইউজার:\n\n';
-    users.forEach(u => { msg += `🆔 ${u.user_id}: ${u.first_name||'N/A'} - $${u.balance.toFixed(2)}\n`; });
-    ctx.reply(msg);
-});
-
-bot.command('cancel', async (ctx) => {
-    delete sessions[ctx.from.id];
-    ctx.reply('❌ বাতিল');
-});
-
-// ============ ADMIN STEP-BY-STEP ============
 bot.on('text', async (ctx, next) => {
-    const userId = ctx.from.id;
-    if (userId !== ADMIN_ID) return next();
-    if (!sessions[userId]) return next();
-    const session = sessions[userId];
-    const text = ctx.message.text;
-    if (text.startsWith('/')) return next();
-
-    if (session.action === 'addtask') {
-        if (session.step === 'title') { session.title = text; session.step = 'reward'; return ctx.reply('💰 রিওয়ার্ড (সংখ্যা):'); }
-        if (session.step === 'reward') { const r = parseFloat(text); if (isNaN(r)) return ctx.reply('❌ সংখ্যা লিখুন।'); session.reward = r; session.step = 'ad_link'; return ctx.reply('🔗 লিংক:'); }
-        if (session.step === 'ad_link') { session.ad_link = text; session.step = 'daily_limit'; return ctx.reply('📊 লিমিট:'); }
-        if (session.step === 'daily_limit') { const l = parseInt(text); if (isNaN(l)) return ctx.reply('❌ সংখ্যা লিখুন।'); await supabase.from('tasks').insert({ title: session.title, reward: session.reward, ad_link: session.ad_link, icon: '📺', daily_limit: l }); ctx.reply(`✅ যোগ হয়েছে!\n📺 ${session.title}\n💰 $${session.reward}\n📊 ${l}/দিন`); delete sessions[userId]; }
-    }
-    else if (session.action === 'removetask') { const id = parseInt(text); if (isNaN(id)) return ctx.reply('❌ আইডি লিখুন।'); await supabase.from('tasks').delete().eq('id', id); ctx.reply('✅ রিমুভ হয়েছে।'); delete sessions[userId]; }
-    else if (session.action === 'addchannel') { const username = text.replace('@', ''); try { const chat = await ctx.telegram.getChat(`@${username}`); let link = `https://t.me/${username}`; try { const inv = await ctx.telegram.createChatInviteLink(chat.id); link = inv.invite_link; } catch(e) {} await supabase.from('channels').insert({ channel_id: chat.id, channel_name: chat.title, invite_link: link }); ctx.reply(`✅ যোগ হয়েছে: ${chat.title}`); } catch(e) { ctx.reply('❌ চ্যানেল পাওয়া যায়নি!'); } delete sessions[userId]; }
-    else if (session.action === 'removechannel') { const id = parseInt(text); if (isNaN(id)) return ctx.reply('❌ আইডি লিখুন।'); await supabase.from('channels').delete().eq('id', id); ctx.reply('✅ রিমুভ হয়েছে।'); delete sessions[userId]; }
+    const uid = ctx.from.id;
+    if (uid !== ADMIN_ID || !sessions[uid]) return next();
+    const s = sessions[uid], t = ctx.message.text;
+    if (t.startsWith('/')) return next();
+    if (s.action === 'addtask') {
+        if (s.step === 'title') { s.title = t; s.step = 'reward'; return ctx.reply('💰 রিওয়ার্ড:'); }
+        if (s.step === 'reward') { const r = parseFloat(t); if (isNaN(r)) return ctx.reply('❌ সংখ্যা'); s.reward = r; s.step = 'ad_link'; return ctx.reply('🔗 লিংক:'); }
+        if (s.step === 'ad_link') { s.ad_link = t; s.step = 'daily_limit'; return ctx.reply('📊 লিমিট:'); }
+        if (s.step === 'daily_limit') { const l = parseInt(t); if (isNaN(l)) return ctx.reply('❌ সংখ্যা'); await supabase.from('tasks').insert({title:s.title,reward:s.reward,ad_link:s.ad_link,icon:'📺',daily_limit:l}); ctx.reply(`✅ ${s.title} - $${s.reward}`); delete sessions[uid]; }
+    } else if (s.action === 'removetask') { await supabase.from('tasks').delete().eq('id',parseInt(t)); ctx.reply('✅'); delete sessions[uid]; }
+    else if (s.action === 'addchannel') { const un = t.replace('@',''); try { const ch = await ctx.telegram.getChat(`@${un}`); let lk = `https://t.me/${un}`; try { lk = (await ctx.telegram.createChatInviteLink(ch.id)).invite_link; } catch(e){} await supabase.from('channels').insert({channel_id:ch.id,channel_name:ch.title,invite_link:lk}); ctx.reply(`✅ ${ch.title}`); } catch(e) { ctx.reply('❌'); } delete sessions[uid]; }
+    else if (s.action === 'removechannel') { await supabase.from('channels').delete().eq('id',parseInt(t)); ctx.reply('✅'); delete sessions[uid]; }
 });
 
-// ============ WEBHOOK HANDLER ============
 module.exports = async (req, res) => {
     if (req.method === 'GET') {
         const { action, user_id, task_id } = req.query;
-
-        if (action === 'get_channels') {
-            const { data: channels } = await supabase.from('channels').select('channel_id, channel_name, invite_link');
-            return res.status(200).json({ channels: channels || [] });
-        }
-
-        if (action === 'check_join' && user_id) {
-            const { data: channels } = await supabase.from('channels').select('*');
-            if (!channels || channels.length === 0) return res.status(200).json({ joined: true });
-            for (const channel of channels) {
-                try {
-                    const r = await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/getChatMember?chat_id=${channel.channel_id}&user_id=${user_id}`);
-                    const j = await r.json();
-                    if (!j.ok || ['left','kicked'].includes(j.result?.status)) return res.status(200).json({ joined: false });
-                } catch(e) { return res.status(200).json({ joined: false }); }
-            }
-            return res.status(200).json({ joined: true });
-        }
-
-        if (action === 'get_user' && user_id) {
-            const { data: user } = await supabase.from('bot_users').select('balance').eq('user_id', user_id).single();
-            return res.status(200).json({ balance: user?.balance || 0 });
-        }
-
-        if (action === 'task_remaining' && user_id && task_id) {
-            const today = new Date().toISOString().split('T')[0];
-            const { data: task } = await supabase.from('tasks').select('daily_limit').eq('id', task_id).single();
-            const dailyLimit = task?.daily_limit || 10;
-            const { data: comp } = await supabase.from('task_completions').select('count_today').eq('user_id', user_id).eq('task_id', task_id).eq('completed_at', today).single();
-            const done = comp?.count_today || 0;
-            return res.status(200).json({ remaining: dailyLimit - done, daily_limit: dailyLimit });
-        }
-
-        return res.status(200).send('EarnFlow Bot is running!');
+        if (action === 'get_channels') { const { data } = await supabase.from('channels').select('channel_id,channel_name,invite_link'); return res.json({ channels: data || [] }); }
+        if (action === 'check_join' && user_id) { const { data: ch } = await supabase.from('channels').select('*'); if (!ch?.length) return res.json({ joined: true }); for (const c of ch) { try { const r = await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/getChatMember?chat_id=${c.channel_id}&user_id=${user_id}`); const j = await r.json(); if (!j.ok || ['left','kicked'].includes(j.result?.status)) return res.json({ joined: false }); } catch(e) { return res.json({ joined: false }); } } return res.json({ joined: true }); }
+        if (action === 'get_user' && user_id) { const { data: u } = await supabase.from('bot_users').select('balance').eq('user_id',user_id).single(); return res.json({ balance: u?.balance || 0 }); }
+        if (action === 'task_remaining' && user_id && task_id) { const td = new Date().toISOString().split('T')[0]; const { data: tk } = await supabase.from('tasks').select('daily_limit').eq('id',task_id).single(); const lim = tk?.daily_limit || 10; const { data: cp } = await supabase.from('task_completions').select('count_today').eq('user_id',user_id).eq('task_id',task_id).eq('completed_at',td).single(); const done = cp?.count_today || 0; return res.json({ remaining: lim - done, daily_limit: lim }); }
+        return res.send('OK');
     }
-
     if (req.method === 'POST') {
-        // Mini App claim
-        if (req.body.action === 'claim_task') {
+        if (req.body?.action === 'claim_task') {
             const { user_id, task_id } = req.body;
-            const today = new Date().toISOString().split('T')[0];
-            const { data: task } = await supabase.from('tasks').select('*').eq('id', task_id).single();
-            if (!task) return res.status(200).json({ success: false, message: 'টাস্ক নেই' });
-
-            const { data: comp } = await supabase.from('task_completions').select('*').eq('user_id', user_id).eq('task_id', task_id).eq('completed_at', today).single();
-            if (comp && comp.count_today >= task.daily_limit) return res.status(200).json({ success: false, message: 'লিমিট শেষ' });
-
-            if (comp) await supabase.from('task_completions').update({ count_today: comp.count_today + 1 }).eq('id', comp.id);
-            else await supabase.from('task_completions').insert({ user_id, task_id, completed_at: today, count_today: 1 });
-
-            await supabase.rpc('add_balance', { uid: user_id, amount: task.reward });
-            const { data: user } = await supabase.from('bot_users').select('balance').eq('user_id', user_id).single();
-            return res.status(200).json({ success: true, reward: task.reward, new_balance: user.balance });
+            const td = new Date().toISOString().split('T')[0];
+            const { data: tk } = await supabase.from('tasks').select('*').eq('id',task_id).single();
+            if (!tk) return res.json({ success: false, message: 'টাস্ক নেই' });
+            const { data: cp } = await supabase.from('task_completions').select('*').eq('user_id',user_id).eq('task_id',task_id).eq('completed_at',td).single();
+            if (cp && cp.count_today >= tk.daily_limit) return res.json({ success: false, message: 'লিমিট শেষ' });
+            if (cp) await supabase.from('task_completions').update({ count_today: cp.count_today + 1 }).eq('id',cp.id);
+            else await supabase.from('task_completions').insert({ user_id, task_id, completed_at: td, count_today: 1 });
+            await supabase.rpc('add_balance', { uid: user_id, amount: tk.reward });
+            const { data: u } = await supabase.from('bot_users').select('balance').eq('user_id',user_id).single();
+            return res.json({ success: true, reward: tk.reward, new_balance: u.balance });
         }
-
-        // Telegram updates
-        try { await bot.handleUpdate(req.body, res); }
-        catch(e) { console.error(e); res.status(200).send('OK'); }
+        try { await bot.handleUpdate(req.body, res); } catch(e) { res.send('OK'); }
     }
 };
