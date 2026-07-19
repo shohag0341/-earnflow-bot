@@ -283,6 +283,35 @@ module.exports = async (req, res) => {
         }
 
         if (action === 'check_join' && user_id) {
+
+
+// Get user info
+if (action === 'get_user' && user_id) {
+    const { data: user } = await supabase.from('bot_users').select('balance').eq('user_id', user_id).single();
+    return res.status(200).json({ balance: user?.balance || 0 });
+}
+
+// Get task remaining
+if (action === 'task_remaining' && user_id && req.query.task_id) {
+    const taskId = req.query.task_id;
+    const today = new Date().toISOString().split('T')[0];
+
+    const { data: task } = await supabase.from('tasks').select('daily_limit').eq('id', taskId).single();
+    const dailyLimit = task?.daily_limit || 10;
+
+    const { data: comp } = await supabase
+        .from('task_completions')
+        .select('count_today')
+        .eq('user_id', user_id)
+        .eq('task_id', taskId)
+        .eq('completed_at', today)
+        .single();
+
+    const done = comp?.count_today || 0;
+    return res.status(200).json({ remaining: dailyLimit - done, daily_limit: dailyLimit });
+}
+
+            
             const { data: channels } = await supabase.from('channels').select('*');
             if (!channels || channels.length === 0) return res.status(200).json({ joined: true });
 
