@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EarnFlow - টাস্ক</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0e17;
+            color: #e0e6f0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 16px;
+        }
+        .card {
+            background: #131a2b;
+            border-radius: 16px;
+            padding: 24px;
+            width: 100%;
+            max-width: 360px;
+            text-align: center;
+        }
+        .icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+        h2 {
+            font-size: 18px;
+            margin-bottom: 6px;
+        }
+        .reward {
+            color: #00d4aa;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        .timer-circle {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 6px solid #1e2d44;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            cursor: pointer;
+        }
+        .ad-btn {
+            background: #6366f1;
+            color: white;
+        }
+        .claim-btn {
+            background: #00d4aa;
+            color: #0a0e17;
+        }
+        .claim-btn:disabled {
+            background: #2d3548;
+            color: #5a6478;
+        }
+        .msg {
+            margin-top: 12px;
+            font-size: 14px;
+            padding: 10px;
+            border-radius: 8px;
+            display: none;
+        }
+        .msg.show {
+            display: block;
+        }
+        .success {
+            background: rgba(0, 212, 170, 0.2);
+            color: #00d4aa;
+        }
+        .error {
+            background: rgba(255, 71, 87, 0.2);
+            color: #ff4757;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">📺</div>
+        <h2 id="title">ভিডিও দেখুন</h2>
+        <p class="reward" id="reward">💰 $0.01</p>
+
+        <div class="timer-circle" id="timer">১৫</div>
+
+        <button class="btn ad-btn" id="adBtn">🔗 অ্যাড দেখুন</button>
+        <button class="btn claim-btn" id="claimBtn" disabled>🎁 রিওয়ার্ড নিন</button>
+
+        <div class="msg" id="msg"></div>
+    </div>
+
+    <script>
+        const adBtn = document.getElementById('adBtn');
+        const claimBtn = document.getElementById('claimBtn');
+        const timerEl = document.getElementById('timer');
+        const msgEl = document.getElementById('msg');
+
+        let countdown;
+
+        adBtn.addEventListener('click', () => {
+            // Open ad
+            window.open('https://google.com', '_blank');
+            
+            // Start timer
+            let sec = 15;
+            adBtn.disabled = true;
+            adBtn.style.opacity = '0.5';
+            timerEl.textContent = sec;
+
+            showMsg('success', '⏳ ১৫ সেকেন্ড অপেক্ষা করুন...');
+
+            countdown = setInterval(() => {
+                sec--;
+                timerEl.textContent = sec;
+                if (sec <= 0) {
+                    clearInterval(countdown);
+                    claimBtn.disabled = false;
+                    timerEl.textContent = '✓';
+                    showMsg('success', '✅ এখন রিওয়ার্ড নিতে পারেন!');
+                }
+            }, 1000);
+        });
+
+        claimBtn.addEventListener('click', () => {
+            claimBtn.textContent = '✅ সম্পন্ন!';
+            claimBtn.disabled = true;
+            showMsg('success', '🎉 রিওয়ার্ড পাঠানো হয়েছে!');
+        });
+
+        function showMsg(type, text) {
+            msgEl.className = 'msg show ' + type;
+            msgEl.textContent = text;
+        }
+    </script>
+</body>
+</html>
