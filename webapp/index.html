@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EarnFlow - টাস্ক</title>
+    <title>EarnFlow</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
@@ -14,12 +14,13 @@
         .reward{color:#00d4aa;font-weight:bold;margin-bottom:10px}
         .info{display:flex;justify-content:space-between;background:#1a2340;padding:10px 14px;border-radius:10px;margin-bottom:14px;font-size:13px}
         .info span{color:#00d4aa;font-weight:bold}
-        .timer-circle{width:90px;height:90px;border-radius:50%;border:5px solid #1e2d44;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:bold}
+        .timer-big{font-size:72px;font-weight:bold;color:#00d4aa;margin:20px 0}
         .btn{display:block;width:100%;padding:14px;border:none;border-radius:12px;font-size:16px;font-weight:bold;margin-bottom:10px;cursor:pointer}
         .ad-btn{background:#6366f1;color:white}
         .claim-btn{background:#00d4aa;color:#0a0e17}
         .claim-btn:disabled{background:#2d3548;color:#5a6478;cursor:not-allowed}
         .join-btn{background:#ffa502;color:#0a0e17}
+        .cross-btn{background:#ff4757;color:white;font-size:20px}
         .msg{margin-top:12px;font-size:14px;padding:10px;border-radius:8px;display:none}
         .msg.show{display:block}
         .success{background:rgba(0,212,170,0.2);color:#00d4aa}
@@ -31,6 +32,8 @@
     </style>
 </head>
 <body>
+
+    <!-- CHANNEL JOIN -->
     <div class="card hidden" id="joinScreen">
         <div class="icon">🔒</div>
         <h2>চ্যানেলে জয়েন করুন</h2>
@@ -40,7 +43,8 @@
         <div class="msg" id="joinMsg"></div>
     </div>
 
-    <div class="card" id="taskScreen">
+    <!-- MAIN TASK -->
+    <div class="card hidden" id="taskScreen">
         <div class="icon" id="taskIcon">📺</div>
         <h2 id="taskTitle">টাস্ক</h2>
         <p class="reward" id="taskReward">💰 $0.00</p>
@@ -48,10 +52,19 @@
             <div>💰 ব্যালেন্স<br><span id="userBalance">$0.00</span></div>
             <div>📊 আজ বাকি<br><span id="taskRemaining">-</span></div>
         </div>
-        <div class="timer-circle" id="timer">১৫</div>
         <button class="btn ad-btn" id="adBtn">🔗 অ্যাড দেখুন</button>
         <button class="btn claim-btn" id="claimBtn" disabled>🎁 রিওয়ার্ড নিন</button>
         <div class="msg" id="msg"></div>
+    </div>
+
+    <!-- TIMER SCREEN -->
+    <div class="card hidden" id="timerScreen">
+        <div class="icon">⏳</div>
+        <h2>অপেক্ষা করুন</h2>
+        <p style="color:#8892a4;margin-bottom:10px">অ্যাড দেখার পর অপেক্ষা করুন</p>
+        <div class="timer-big" id="timerBig">১৫</div>
+        <button class="btn cross-btn hidden" id="crossBtn">✕ বন্ধ করুন</button>
+        <div class="msg" id="timerMsg"></div>
     </div>
 
     <script>
@@ -63,13 +76,19 @@
             const BASE = 'https://earnflow-bot.vercel.app';
             const uid = tg.initDataUnsafe?.user?.id;
             let taskData = null;
-            let timerInterval = null;
+            let timerDone = false;
 
             try {
                 const p = new URLSearchParams(location.search);
                 const d = p.get('data');
                 if (d) taskData = JSON.parse(decodeURIComponent(d));
             } catch(e) {}
+
+            // Show screen
+            function show(id) {
+                ['joinScreen','taskScreen','timerScreen'].forEach(s => document.getElementById(s).classList.add('hidden'));
+                document.getElementById(id).classList.remove('hidden');
+            }
 
             async function init(){
                 try {
@@ -83,8 +102,7 @@
                             const l = c.invite_link || 'https://t.me/'+(c.channel_id||'').toString().replace('-100','');
                             document.getElementById('channelList').innerHTML += `<div class="channel-item"><span>📢</span><a href="${l}" target="_blank">${c.channel_name||'চ্যানেল'}</a></div>`;
                         });
-                        document.getElementById('joinScreen').classList.remove('hidden');
-                        document.getElementById('taskScreen').classList.add('hidden');
+                        show('joinScreen');
                         return;
                     }
                     const ur = await fetch(`${BASE}/api/webhook?action=get_user&user_id=${uid}`);
@@ -98,19 +116,21 @@
                         const rd = await rr.json();
                         document.getElementById('taskRemaining').textContent = (rd.remaining||0)+'/'+(rd.daily_limit||10);
                     }
-                    document.getElementById('joinScreen').classList.add('hidden');
-                    document.getElementById('taskScreen').classList.remove('hidden');
+                    if (timerDone) {
+                        document.getElementById('claimBtn').disabled = false;
+                    }
+                    show('taskScreen');
                 } catch(e){
                     if(taskData){
                         document.getElementById('taskIcon').textContent = taskData.icon||'📺';
                         document.getElementById('taskTitle').textContent = taskData.title||'টাস্ক';
                         document.getElementById('taskReward').textContent = '💰 $'+(taskData.reward||'0');
                     }
-                    document.getElementById('joinScreen').classList.add('hidden');
-                    document.getElementById('taskScreen').classList.remove('hidden');
+                    show('taskScreen');
                 }
             }
 
+            // Verify Join
             document.getElementById('verifyBtn').addEventListener('click', async () => {
                 const b = document.getElementById('verifyBtn');
                 b.textContent = '⏳'; b.disabled = true;
@@ -127,38 +147,38 @@
                 }
             });
 
-            // AD BUTTON
+            // AD BUTTON → Open ad + Timer page
             document.getElementById('adBtn').addEventListener('click', function(){
                 const adLink = taskData?.ad_link || 'https://google.com';
                 window.open(adLink, '_blank');
+                
+                // Show timer screen
+                show('timerScreen');
+                document.getElementById('crossBtn').classList.add('hidden');
+                document.getElementById('timerMsg').className = 'msg hidden';
+                document.getElementById('timerMsg').textContent = '';
 
-                // Disable ad button
-                this.disabled = true;
-                this.style.opacity = '0.5';
-
-                // Show message
-                document.getElementById('msg').className = 'msg show success';
-                document.getElementById('msg').textContent = '⏳ ১৫ সেকেন্ড অপেক্ষা করুন...';
-                tg.HapticFeedback.notification('success');
-
-                // Start countdown
                 let sec = 15;
-                document.getElementById('timer').textContent = sec;
+                document.getElementById('timerBig').textContent = sec;
 
-                if (timerInterval) clearInterval(timerInterval);
-
-                timerInterval = setInterval(function(){
+                const interval = setInterval(function(){
                     sec--;
-                    document.getElementById('timer').textContent = sec;
+                    document.getElementById('timerBig').textContent = sec;
 
                     if (sec <= 0) {
-                        clearInterval(timerInterval);
-                        timerInterval = null;
-                        document.getElementById('claimBtn').disabled = false;
-                        document.getElementById('timer').textContent = '✓';
-                        document.getElementById('msg').textContent = '✅ এখন রিওয়ার্ড নিতে পারেন!';
+                        clearInterval(interval);
+                        document.getElementById('timerBig').textContent = '✓';
+                        document.getElementById('crossBtn').classList.remove('hidden');
+                        document.getElementById('timerMsg').className = 'msg show success';
+                        document.getElementById('timerMsg').textContent = 'এখন বন্ধ করে রিওয়ার্ড নিন!';
+                        timerDone = true;
                     }
                 }, 1000);
+            });
+
+            // CROSS BUTTON → Go back to main
+            document.getElementById('crossBtn').addEventListener('click', function(){
+                init();
             });
 
             // CLAIM BUTTON
@@ -181,6 +201,7 @@
                         document.getElementById('msg').textContent = '🎉 +$'+d.reward+' যোগ হয়েছে!';
                         document.getElementById('userBalance').textContent = '$'+d.new_balance.toFixed(2);
                         tg.HapticFeedback.notification('success');
+                        timerDone = false;
                         setTimeout(function(){ tg.close(); }, 2000);
                     } else {
                         btn.textContent = '🎁 রিওয়ার্ড নিন';
