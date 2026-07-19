@@ -243,11 +243,27 @@ bot.command('addchannel', async (ctx) => {
             return ctx.reply('⚠️ এই চ্যানেলটি আগেই যোগ করা আছে!');
         }
 
-        await supabase.from('channels').insert({
-            channel_id: chat.id,
-            channel_name: chat.title
-        });
 
+
+        
+        // Get invite link
+let inviteLink = `https://t.me/${channelUsername}`;
+try {
+    const link = await ctx.telegram.createChatInviteLink(chat.id);
+    inviteLink = link.invite_link;
+} catch (e) {
+    // Use default link
+}
+
+await supabase.from('channels').insert({
+    channel_id: chat.id,
+    channel_name: chat.title,
+    invite_link: inviteLink
+});
+
+
+
+        
         ctx.reply(`✅ চ্যানেল যোগ করা হয়েছে: ${chat.title}`);
     } catch (e) {
         ctx.reply('❌ চ্যানেল পাওয়া যায়নি! বটকে চ্যানেলে অ্যাডমিন করুন।');
