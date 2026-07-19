@@ -9,9 +9,9 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             background: #0a0e17; color: #e0e6f0;
-            font-family: Arial, sans-serif;
+            font-family: Arial, sans-serif; min-height: 100vh;
             display: flex; justify-content: center; align-items: center;
-            min-height: 100vh; padding: 16px;
+            padding: 16px;
         }
         .card {
             background: #131a2b; border-radius: 16px;
@@ -39,7 +39,7 @@
         }
         .ad-btn { background: #6366f1; color: white; }
         .claim-btn { background: #00d4aa; color: #0a0e17; }
-        .claim-btn:disabled { background: #2d3548; color: #5a6478; }
+        .claim-btn:disabled { background: #2d3548; color: #5a6478; cursor: not-allowed; }
         .join-btn { background: #ffa502; color: #0a0e17; }
         .msg {
             margin-top: 12px; font-size: 14px;
@@ -55,13 +55,12 @@
             padding: 10px; background: #1a2340;
             border-radius: 10px; margin-bottom: 8px;
         }
-        .channel-item a { color: #6366f1; text-decoration: none; flex: 1; text-align: left; }
-        .loading-text { color: #8892a4; font-size: 14px; margin-top: 12px; }
+        .channel-item a { color: #6366f1; text-decoration: none; flex: 1; }
     </style>
 </head>
 <body>
     <!-- Channel Join Screen -->
-    <div class="card" id="joinScreen">
+    <div class="card hidden" id="joinScreen">
         <div class="icon">🔒</div>
         <h2>চ্যানেলে জয়েন করুন</h2>
         <p style="color:#8892a4; margin-bottom:14px; font-size:14px;">টাস্ক করতে চ্যানেলে জয়েন করুন</p>
@@ -77,8 +76,8 @@
         <p class="reward" id="taskReward">💰 $0.00</p>
         
         <div class="info">
-            <div>💰 ব্যালেন্স<br><span id="userBalance">লোডিং...</span></div>
-            <div>📊 আজ বাকি<br><span id="taskRemaining">লোডিং...</span></div>
+            <div>💰 ব্যালেন্স<br><span id="userBalance">$0.00</span></div>
+            <div>📊 আজ বাকি<br><span id="taskRemaining">-</span></div>
         </div>
 
         <div class="timer-circle" id="timer">১৫</div>
@@ -95,42 +94,39 @@
         const BASE_URL = 'https://earnflow-bot.vercel.app';
         const userId = tg.initDataUnsafe?.user?.id;
 
-        // Get task data from URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const taskDataEncoded = urlParams.get('data');
+        // Parse task data from URL
         let taskData = null;
         try {
-            if (taskDataEncoded) taskData = JSON.parse(decodeURIComponent(taskDataEncoded));
+            const params = new URLSearchParams(window.location.search);
+            const encoded = params.get('data');
+            if (encoded) taskData = JSON.parse(decodeURIComponent(encoded));
         } catch(e) {}
-
-        console.log('User ID:', userId);
-        console.log('Task Data:', taskData);
 
         // Elements
         const joinScreen = document.getElementById('joinScreen');
         const taskScreen = document.getElementById('taskScreen');
-        const channelList = document.getElementById('channelList');
-        const verifyBtn = document.getElementById('verifyBtn');
-        const joinMsg = document.getElementById('joinMsg');
+        const adBtn = document.getElementById('adBtn');
+        const claimBtn = document.getElementById('claimBtn');
+        const timerEl = document.getElementById('timer');
+        const msgEl = document.getElementById('msg');
+        let countdown;
 
-        // Load data on start
+        // Load all data
         async function init() {
             try {
-                console.log('Checking channels...');
+                // Check channel join
                 const checkRes = await fetch(`${BASE_URL}/api/webhook?action=check_join&user_id=${userId}`);
                 const checkData = await checkRes.json();
-                console.log('Check result:', checkData);
 
                 if (!checkData.joined) {
-                    console.log('Not joined, loading channels...');
                     const chRes = await fetch(`${BASE_URL}/api/webhook?action=get_channels`);
                     const chData = await chRes.json();
                     
-                    channelList.innerHTML = '';
+                    document.getElementById('channelList').innerHTML = '';
                     if (chData.channels) {
                         chData.channels.forEach(ch => {
                             const link = ch.invite_link || 'https://t.me/' + (ch.channel_id || '').toString().replace('-100', '');
-                            channelList.innerHTML += `
+                            document.getElementById('channelList').innerHTML += `
                                 <div class="channel-item">
                                     <span>📢</span>
                                     <a href="${link}" target="_blank">${ch.channel_name || 'চ্যানেল'}</a>
@@ -143,24 +139,18 @@
                     return;
                 }
 
-                // Already joined - load user data
-                console.log('Joined! Loading user data...');
+                // Already joined - load data
                 const userRes = await fetch(`${BASE_URL}/api/webhook?action=get_user&user_id=${userId}`);
                 const userData = await userRes.json();
-                console.log('User data:', userData);
-
                 document.getElementById('userBalance').textContent = '$' + (userData.balance || 0).toFixed(2);
 
-                // Task info
                 if (taskData) {
+                    document.getElementById('taskIcon').textContent = taskData.icon || '📺';
                     document.getElementById('taskTitle').textContent = taskData.title || 'টাস্ক';
                     document.getElementById('taskReward').textContent = '💰 $' + (taskData.reward || '0');
-                    document.getElementById('taskIcon').textContent = taskData.icon || '📺';
 
-                    // Get remaining
                     const remRes = await fetch(`${BASE_URL}/api/webhook?action=task_remaining&user_id=${userId}&task_id=${taskData.task_id}`);
                     const remData = await remRes.json();
-                    console.log('Remaining:', remData);
                     document.getElementById('taskRemaining').textContent = (remData.remaining || 0) + '/' + (remData.daily_limit || 10);
                 }
 
@@ -168,64 +158,50 @@
                 taskScreen.classList.remove('hidden');
 
             } catch(e) {
-                console.error('Init error:', e);
-                // Show task anyway
                 if (taskData) {
+                    document.getElementById('taskIcon').textContent = taskData.icon || '📺';
                     document.getElementById('taskTitle').textContent = taskData.title || 'টাস্ক';
                     document.getElementById('taskReward').textContent = '💰 $' + (taskData.reward || '0');
-                    document.getElementById('taskIcon').textContent = taskData.icon || '📺';
                 }
-                document.getElementById('userBalance').textContent = '$0.00';
-                document.getElementById('taskRemaining').textContent = '-';
                 joinScreen.classList.add('hidden');
                 taskScreen.classList.remove('hidden');
             }
         }
 
-        // Verify Join Button
-        verifyBtn.addEventListener('click', async () => {
-            verifyBtn.textContent = '⏳ চেক করা হচ্ছে...';
-            verifyBtn.disabled = true;
+        // Verify join
+        document.getElementById('verifyBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('verifyBtn');
+            btn.textContent = '⏳ চেক...';
+            btn.disabled = true;
 
-            try {
-                const checkRes = await fetch(`${BASE_URL}/api/webhook?action=check_join&user_id=${userId}`);
-                const checkData = await checkRes.json();
+            const checkRes = await fetch(`${BASE_URL}/api/webhook?action=check_join&user_id=${userId}`);
+            const checkData = await checkRes.json();
 
-                if (checkData.joined) {
-                    joinMsg.className = 'msg show success';
-                    joinMsg.textContent = '✅ ভেরিফাইড!';
-                    setTimeout(() => init(), 600);
-                } else {
-                    joinMsg.className = 'msg show error';
-                    joinMsg.textContent = '❌ এখনো জয়েন করেননি!';
-                    verifyBtn.textContent = '✅ জয়েন করেছি';
-                    verifyBtn.disabled = false;
-                }
-            } catch(e) {
-                joinMsg.className = 'msg show error';
-                joinMsg.textContent = '❌ এরর! আবার চেষ্টা করুন।';
-                verifyBtn.textContent = '✅ জয়েন করেছি';
-                verifyBtn.disabled = false;
+            if (checkData.joined) {
+                document.getElementById('joinMsg').className = 'msg show success';
+                document.getElementById('joinMsg').textContent = '✅ ভেরিফাইড!';
+                setTimeout(() => init(), 600);
+            } else {
+                document.getElementById('joinMsg').className = 'msg show error';
+                document.getElementById('joinMsg').textContent = '❌ জয়েন করেননি!';
+                btn.textContent = '✅ জয়েন করেছি';
+                btn.disabled = false;
             }
         });
 
-        // ============ TASK ============
-        const adBtn = document.getElementById('adBtn');
-        const claimBtn = document.getElementById('claimBtn');
-        const timerEl = document.getElementById('timer');
-        const msgEl = document.getElementById('msg');
-        let countdown;
-
+        // Ad Button
         adBtn.addEventListener('click', () => {
             const adLink = taskData?.ad_link || 'https://google.com';
             window.open(adLink, '_blank');
-            
+
+            // Start timer
             let sec = 15;
             adBtn.disabled = true;
             adBtn.style.opacity = '0.5';
             timerEl.textContent = sec;
             msgEl.className = 'msg show success';
             msgEl.textContent = '⏳ ১৫ সেকেন্ড অপেক্ষা করুন...';
+            tg.HapticFeedback.notification('success');
 
             countdown = setInterval(() => {
                 sec--;
@@ -239,48 +215,39 @@
             }, 1000);
         });
 
+        // Claim Button
         claimBtn.addEventListener('click', async () => {
-    claimBtn.textContent = '⏳ পাঠানো হচ্ছে...';
-    claimBtn.disabled = true;
-    msgEl.className = 'msg show success';
-    msgEl.textContent = '⏳ রিওয়ার্ড পাঠানো হচ্ছে...';
+            claimBtn.textContent = '⏳...';
+            claimBtn.disabled = true;
 
-    try {
-        const res = await fetch(`${BASE_URL}/api/webhook`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                action: 'claim_task', 
-                user_id: userId, 
-                task_id: taskData?.task_id 
-            })
+            try {
+                const res = await fetch(`${BASE_URL}/api/webhook`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'claim_task', user_id: userId, task_id: taskData?.task_id })
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    claimBtn.textContent = '✅ সম্পন্ন!';
+                    msgEl.className = 'msg show success';
+                    msgEl.textContent = `🎉 +$${result.reward} যোগ হয়েছে!`;
+                    document.getElementById('userBalance').textContent = '$' + result.new_balance.toFixed(2);
+                    tg.HapticFeedback.notification('success');
+                    setTimeout(() => tg.close(), 2000);
+                } else {
+                    claimBtn.textContent = '❌ ব্যর্থ';
+                    msgEl.className = 'msg show error';
+                    msgEl.textContent = result.message || 'এরর!';
+                    claimBtn.disabled = false;
+                }
+            } catch(e) {
+                claimBtn.textContent = '❌ এরর';
+                msgEl.className = 'msg show error';
+                msgEl.textContent = 'নেটওয়ার্ক এরর!';
+                claimBtn.disabled = false;
+            }
         });
-        
-        const result = await res.json();
-        console.log('Claim result:', result);
-        
-        if (result.success) {
-            claimBtn.textContent = '✅ সম্পন্ন!';
-            msgEl.className = 'msg show success';
-            msgEl.textContent = `🎉 $${result.reward} যোগ হয়েছে!`;
-            document.getElementById('userBalance').textContent = '$' + result.new_balance.toFixed(2);
-        } else {
-            claimBtn.textContent = '❌ ব্যর্থ!';
-            msgEl.className = 'msg show error';
-            msgEl.textContent = result.message || '❌ এরর!';
-            claimBtn.disabled = false;
-        }
-    } catch(e) {
-        console.error('Claim error:', e);
-        claimBtn.textContent = '❌ এরর!';
-        msgEl.className = 'msg show error';
-        msgEl.textContent = '❌ নেটওয়ার্ক এরর!';
-        claimBtn.disabled = false;
-    }
-
-    tg.HapticFeedback.notification('success');
-    setTimeout(() => tg.close(), 2000);
-});
 
         // Start
         init();
