@@ -76,19 +76,28 @@ bot.action('check_join', async (ctx) => {
     }
 });
 
+
+// Middleware for channel check
 // Middleware for channel check
 bot.use(async (ctx, next) => {
-    if (ctx.message?.text?.startsWith('/start')) {
-        const args = ctx.message.text.split(' ');
-        if (args[1]) {
-            // Referral link - skip channel check temporarily
-            return next();
-        }
+    // Skip for admin
+    if (ctx.from?.id === ADMIN_ID) return next();
+    
+    // Skip for callback queries
+    if (ctx.callbackQuery) return next();
+    
+    // Skip for web_app_data
+    if (ctx.webAppData) return next();
+    
+    // Check channel join for all messages
+    if (ctx.message || ctx.callbackQuery) {
         const joined = await checkChannels(ctx);
         if (!joined) return;
     }
+    
     return next();
 });
+
 
 // Start Command
 bot.start(async (ctx) => {
