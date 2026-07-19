@@ -6,11 +6,7 @@
     <title>EarnFlow - টাস্ক</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             background: #0a0e17;
             color: #e0e6f0;
@@ -29,109 +25,173 @@
             max-width: 360px;
             text-align: center;
         }
-        .icon {
-            font-size: 48px;
-            margin-bottom: 12px;
-        }
-        h2 {
-            font-size: 18px;
-            margin-bottom: 6px;
-        }
-        .reward {
-            color: #00d4aa;
-            font-weight: bold;
-            margin-bottom: 20px;
-        }
+        .icon { font-size: 48px; margin-bottom: 12px; }
+        h2 { font-size: 18px; margin-bottom: 6px; }
+        .reward { color: #00d4aa; font-weight: bold; margin-bottom: 20px; }
         .timer-circle {
-            width: 100px;
-            height: 100px;
+            width: 100px; height: 100px;
             border-radius: 50%;
             border: 6px solid #1e2d44;
             margin: 0 auto 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 28px;
-            font-weight: bold;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 28px; font-weight: bold;
         }
         .btn {
-            display: block;
-            width: 100%;
-            padding: 14px;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: bold;
-            margin-bottom: 10px;
-            cursor: pointer;
+            display: block; width: 100%; padding: 14px;
+            border: none; border-radius: 12px;
+            font-size: 16px; font-weight: bold;
+            margin-bottom: 10px; cursor: pointer;
         }
-        .ad-btn {
-            background: #6366f1;
-            color: white;
-        }
-        .claim-btn {
-            background: #00d4aa;
-            color: #0a0e17;
-        }
-        .claim-btn:disabled {
-            background: #2d3548;
-            color: #5a6478;
-        }
+        .ad-btn { background: #6366f1; color: white; }
+        .claim-btn { background: #00d4aa; color: #0a0e17; }
+        .claim-btn:disabled { background: #2d3548; color: #5a6478; }
+        .join-btn { background: #ffa502; color: #0a0e17; }
         .msg {
-            margin-top: 12px;
-            font-size: 14px;
-            padding: 10px;
-            border-radius: 8px;
-            display: none;
+            margin-top: 12px; font-size: 14px;
+            padding: 10px; border-radius: 8px; display: none;
         }
-        .msg.show {
-            display: block;
+        .msg.show { display: block; }
+        .success { background: rgba(0, 212, 170, 0.2); color: #00d4aa; }
+        .error { background: rgba(255, 71, 87, 0.2); color: #ff4757; }
+        .warning { background: rgba(255, 165, 2, 0.2); color: #ffa502; }
+        .hidden { display: none; }
+        .channel-list { text-align: left; margin-bottom: 16px; }
+        .channel-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px; background: #1a2340;
+            border-radius: 10px; margin-bottom: 8px;
         }
-        .success {
-            background: rgba(0, 212, 170, 0.2);
-            color: #00d4aa;
-        }
-        .error {
-            background: rgba(255, 71, 87, 0.2);
-            color: #ff4757;
+        .channel-item a {
+            color: #6366f1; text-decoration: none;
+            flex: 1; text-align: left;
         }
     </style>
 </head>
 <body>
-    <div class="card">
-        <div class="icon">📺</div>
-        <h2 id="title">ভিডিও দেখুন</h2>
-        <p class="reward" id="reward">💰 $0.01</p>
+    <!-- Channel Join Screen -->
+    <div class="card" id="joinScreen">
+        <div class="icon">🔒</div>
+        <h2>চ্যানেলে জয়েন করুন</h2>
+        <p style="color:#8892a4; margin-bottom:16px;">টাস্ক করতে নিচের চ্যানেলে জয়েন করুন</p>
+        <div class="channel-list" id="channelList"></div>
+        <button class="btn join-btn" id="verifyBtn">✅ জয়েন করেছি</button>
+        <div class="msg" id="joinMsg"></div>
+    </div>
 
+    <!-- Task Screen -->
+    <div class="card hidden" id="taskScreen">
+        <div class="icon" id="taskIcon">📺</div>
+        <h2 id="taskTitle">ভিডিও দেখুন</h2>
+        <p class="reward" id="taskReward">💰 $0.01</p>
         <div class="timer-circle" id="timer">১৫</div>
-
         <button class="btn ad-btn" id="adBtn">🔗 অ্যাড দেখুন</button>
         <button class="btn claim-btn" id="claimBtn" disabled>🎁 রিওয়ার্ড নিন</button>
-
         <div class="msg" id="msg"></div>
     </div>
 
     <script>
-        // Telegram Web App Init
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
 
+        const BASE_URL = 'https://earnflow-bot.vercel.app';
+        const userId = tg.initDataUnsafe?.user?.id;
+
+        // Get task data from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const taskDataEncoded = urlParams.get('data');
+        let taskData = null;
+        if (taskDataEncoded) {
+            taskData = JSON.parse(decodeURIComponent(taskDataEncoded));
+        }
+
+        // Screens
+        const joinScreen = document.getElementById('joinScreen');
+        const taskScreen = document.getElementById('taskScreen');
+        const channelList = document.getElementById('channelList');
+        const verifyBtn = document.getElementById('verifyBtn');
+        const joinMsg = document.getElementById('joinMsg');
+
+        // Load channels
+        async function loadChannels() {
+            try {
+                const res = await fetch(`${BASE_URL}/api/webhook?action=get_channels`);
+                const data = await res.json();
+                
+                if (!data.channels || data.channels.length === 0) {
+                    // No channels, show task directly
+                    showTaskScreen();
+                    return;
+                }
+
+                channelList.innerHTML = '';
+                data.channels.forEach(ch => {
+                    const link = ch.channel_id.toString().replace('-100', '');
+                    channelList.innerHTML += `
+                        <div class="channel-item">
+                            <span>📢</span>
+                            <a href="https://t.me/${link}" target="_blank">${ch.channel_name || 'চ্যানেল'}</a>
+                        </div>
+                    `;
+                });
+            } catch (e) {
+                showTaskScreen();
+            }
+        }
+
+        // Verify join
+        verifyBtn.addEventListener('click', async () => {
+            verifyBtn.textContent = '⏳ চেক করা হচ্ছে...';
+            verifyBtn.disabled = true;
+
+            try {
+                const res = await fetch(`${BASE_URL}/api/webhook?action=check_join&user_id=${userId}`);
+                const data = await res.json();
+
+                if (data.joined) {
+                    joinMsg.className = 'msg show success';
+                    joinMsg.textContent = '✅ ভেরিফাইড!';
+                    setTimeout(showTaskScreen, 1000);
+                } else {
+                    joinMsg.className = 'msg show error';
+                    joinMsg.textContent = '❌ এখনো সব চ্যানেলে জয়েন করেননি!';
+                    verifyBtn.textContent = '✅ জয়েন করেছি';
+                    verifyBtn.disabled = false;
+                }
+            } catch (e) {
+                joinMsg.className = 'msg show error';
+                joinMsg.textContent = '❌ এরর! আবার চেষ্টা করুন।';
+                verifyBtn.textContent = '✅ জয়েন করেছি';
+                verifyBtn.disabled = false;
+            }
+        });
+
+        function showTaskScreen() {
+            joinScreen.classList.add('hidden');
+            taskScreen.classList.remove('hidden');
+
+            if (taskData) {
+                document.getElementById('taskTitle').textContent = taskData.title || 'টাস্ক';
+                document.getElementById('taskReward').textContent = `💰 $${taskData.reward || '0'}`;
+                document.getElementById('taskIcon').textContent = taskData.icon || '📺';
+            }
+        }
+
+        // Task Logic
         const adBtn = document.getElementById('adBtn');
         const claimBtn = document.getElementById('claimBtn');
         const timerEl = document.getElementById('timer');
         const msgEl = document.getElementById('msg');
-
         let countdown;
 
         adBtn.addEventListener('click', () => {
-            window.open('https://google.com', '_blank');
+            const adLink = taskData?.ad_link || 'https://google.com';
+            window.open(adLink, '_blank');
             
             let sec = 15;
             adBtn.disabled = true;
             adBtn.style.opacity = '0.5';
             timerEl.textContent = sec;
-
             showMsg('success', '⏳ ১৫ সেকেন্ড অপেক্ষা করুন...');
 
             countdown = setInterval(() => {
@@ -151,16 +211,21 @@
             claimBtn.disabled = true;
             showMsg('success', '🎉 রিওয়ার্ড পাঠানো হয়েছে!');
 
-            // Send data to Telegram Bot
-            tg.sendData(JSON.stringify({ action: "claim" }));
+            tg.sendData(JSON.stringify({
+                action: 'claim',
+                task_id: taskData?.task_id
+            }));
             tg.HapticFeedback.notification('success');
-            setTimeout(() => tg.close(), 1000);
+            setTimeout(() => tg.close(), 1500);
         });
 
         function showMsg(type, text) {
             msgEl.className = 'msg show ' + type;
             msgEl.textContent = text;
         }
+
+        // Start
+        loadChannels();
     </script>
 </body>
 </html>
