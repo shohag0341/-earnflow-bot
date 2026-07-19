@@ -56,9 +56,10 @@ bot.hears('📺 টাস্ক', async (ctx) => {
     const { data: tasks } = await supabase.from('tasks').select('*').order('id', { ascending: true });
     if (!tasks || tasks.length === 0) return ctx.reply('⚠️ কোনো টাস্ক নেই।');
     const buttons = tasks.map(task => {
-        return [{ text: `${task.icon || '📺'} ${task.title} - $${task.reward}`, callback_data: `task_${task.id}` }];
+        const data = encodeURIComponent(JSON.stringify({ task_id: task.id, title: task.title, reward: task.reward, icon: task.icon || '📺', ad_link: task.ad_link }));
+        return [{ text: `${task.icon || '📺'} ${task.title} - $${task.reward}`, web_app: { url: `${process.env.BASE_URL}/webapp/?data=${data}` } }];
     });
-    ctx.reply('📺 টাস্ক:', { reply_markup: { inline_keyboard: buttons } });
+    ctx.reply('📺 টাস্ক করুন:', { reply_markup: { inline_keyboard: buttons } });
 });
 
 bot.hears('💰 ব্যালেন্স', async (ctx) => {
@@ -83,152 +84,7 @@ bot.hears('🏆 লিডারবোর্ড', async (ctx) => {
 bot.hears('🏧 উইথড্র', (ctx) => ctx.reply('🏧 শীঘ্রই আসছে...'));
 bot.hears('📞 সাপোর্ট', (ctx) => ctx.reply('📞 @admin'));
 
-// ============ TASK SYSTEM ============
-
-
-
-bot.action(/task_(.+)/, async (ctx) => {
-    const taskId = ctx.match[1];
-    const userId = ctx.from.id;
-    const today = new Date().toISOString().split('T')[0];
-
-    const { data: task } = await supabase.from('tasks').select('*').eq('id', taskId).single();
-    if (!task) return ctx.answerCbQuery('টাস্ক পাওয়া যায়নি!', { show_alert: true });
-
-    const { data: comp } = await supabase.from('task_completions').select('*').eq('user_id', userId).eq('task_id', taskId).eq('completed_at', today).single();
-    const done = comp?.count_today || 0;
-    const remaining = task.daily_limit - done;
-
-    if (remaining <= 0) {
-        return ctx.answerCbQuery(`⚠️ আজকের লিমিট শেষ (${task.daily_limit} বার)`, { show_alert: true });
-    }
-
-    await ctx.answerCbQuery();
-
-    // প্রথম মেসেজ - শুধু অ্যাড বাটন
-    const msg = await ctx.reply(
-        `${task.icon || '📺'} **${task.title}**\n\n💰 রিওয়ার্ড: $${task.reward}\n📊 আজ বাকি: ${remaining}/${task.daily_limit}\n\n🔗 নিচের বাটনে ক্লিক করে অ্যাড দেখুন\n⏳ ১৫ সেকেন্ড পর রিওয়ার্ড নিন`,
-        {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🔗 অ্যাড দেখুন', url: task.ad_link }],
-                    [{ text: '⏳ ১৫ সেকেন্ড অপেক্ষা করুন...', callback_data: 'countdown_start' }]
-                ]
-            }
-        }
-    );
-
-    // Store task info for countdown
-    sessions[`countdown_${msg.message_id}`] = {
-        taskId: task.id,
-        taskTitle: task.title,
-        taskReward: task.reward,
-        remaining: remaining,
-        dailyLimit: task.daily_limit,
-        chatId: msg.chat.id,
-        messageId: msg.message_id
-    };
-});
-
-// Start countdown
-bot.action('countdown_start', async (ctx) => {
-    const msgId = ctx.callbackQuery.message.message_id;
-    const data = sessions[`countdown_${msgId}`];
-    
-    if (!data) {
-        return ctx.answerCbQuery('⚠️ সেশন শেষ! আবার টাস্ক সিলেক্ট করুন।', { show_alert: true });
-    }
-
-    await ctx.answerCbQuery('⏳ কাউন্টডাউন শুরু...', { show_alert: true });
-
-    // Remove old button, show countdown
-    await ctx.editMessageReplyMarkup({
-        inline_keyboard: [
-            [{ text: '🔗 অ্যাড দেখুন', url: `https://t.me` }], // placeholder
-            [{ text: '⏳ ১৫ সেকেন্ড...', callback_data: 'noop' }]
-        ]
-    });
-
-    // Countdown 15 seconds
-    for (let i = 14; i >= 0; i--) {
-        await new Promise(r => setTimeout(r, 1000));
-        try {
-            if (i > 0) {
-                await ctx.telegram.editMessageText(
-                    data.chatId, data.messageId, null,
-                    `📺 **${data.taskTitle}**\n\n💰 রিওয়ার্ড: $${data.taskReward}\n📊 আজ বাকি: ${data.remaining}/${data.dailyLimit}\n\n⏳ **${i}** সেকেন্ড অপেক্ষা করুন...`,
-                    {
-                        parse_mode: 'Markdown',
-                        reply_markup: {
-                            inline_keyboard: [
-                                [{ text: '🔗 অ্যাড দেখুন', url: `https://t.me` }],
-                                [{ text: `⏳ ${i} সেকেন্ড...`, callback_data: 'noop' }]
-                            ]
-                        }
-                    }
-                );
-            } else {
-                await ctx.telegram.editMessageText(
-                    data.chatId, data.messageId, null,
-                    `📺 **${data.taskTitle}**\n\n💰 রিওয়ার্ড: $${data.taskReward}\n📊 আজ বাকি: ${data.remaining}/${data.dailyLimit}\n\n✅ এখন রিওয়ার্ড নিন!`,
-                    {
-                        parse_mode: 'Markdown',
-                        reply_markup: {
-                            inline_keyboard: [
-                                [{ text: '🎁 রিওয়ার্ড নিন', callback_data: `complete_${data.taskId}` }]
-                            ]
-                        }
-                    }
-                );
-            }
-        } catch(e) {}
-    }
-
-    delete sessions[`countdown_${msgId}`];
-});
-
-bot.action('noop', async (ctx) => {
-    await ctx.answerCbQuery('⏳ অপেক্ষা করুন...', { show_alert: true });
-});
-
-
-
-
-bot.action('waiting', async (ctx) => {
-    await ctx.answerCbQuery('⏳ ১৫ সেকেন্ড অপেক্ষা করুন...', { show_alert: true });
-});
-
-bot.action(/complete_(.+)/, async (ctx) => {
-    const taskId = ctx.match[1];
-    const userId = ctx.from.id;
-    const today = new Date().toISOString().split('T')[0];
-
-    const { data: task } = await supabase.from('tasks').select('*').eq('id', taskId).single();
-    if (!task) return ctx.answerCbQuery('টাস্ক পাওয়া যায়নি!', { show_alert: true });
-
-    const { data: comp } = await supabase.from('task_completions').select('*').eq('user_id', userId).eq('task_id', taskId).eq('completed_at', today).single();
-    const done = comp?.count_today || 0;
-
-    if (done >= task.daily_limit) {
-        return ctx.answerCbQuery('⚠️ আজকের লিমিট শেষ!', { show_alert: true });
-    }
-
-    if (comp) {
-        await supabase.from('task_completions').update({ count_today: comp.count_today + 1 }).eq('id', comp.id);
-    } else {
-        await supabase.from('task_completions').insert({ user_id: userId, task_id: taskId, completed_at: today, count_today: 1 });
-    }
-
-    await supabase.rpc('add_balance', { uid: userId, amount: task.reward });
-    const { data: user } = await supabase.from('bot_users').select('balance').eq('user_id', userId).single();
-
-    await ctx.answerCbQuery('✅ রিওয়ার্ড যোগ হয়েছে!', { show_alert: true });
-    await ctx.deleteMessage();
-    ctx.reply(`✅ টাস্ক সম্পন্ন!\n\n📺 ${task.title}\n💰 +$${task.reward}\n💵 মোট: $${user.balance.toFixed(2)}`);
-});
-
-// ============ ADMIN ============
+// ============ ADMIN PANEL ============
 bot.command('admin', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
     ctx.reply('👑 প্যানেল\n/addtask | /removetask | /tasks\n/addchannel | /removechannel | /channels\n/users');
@@ -298,6 +154,7 @@ bot.command('cancel', async (ctx) => {
     ctx.reply('❌ বাতিল');
 });
 
+// ============ ADMIN STEP-BY-STEP ============
 bot.on('text', async (ctx, next) => {
     const userId = ctx.from.id;
     if (userId !== ADMIN_ID) return next();
@@ -317,12 +174,67 @@ bot.on('text', async (ctx, next) => {
     else if (session.action === 'removechannel') { const id = parseInt(text); if (isNaN(id)) return ctx.reply('❌ আইডি লিখুন।'); await supabase.from('channels').delete().eq('id', id); ctx.reply('✅ রিমুভ হয়েছে।'); delete sessions[userId]; }
 });
 
-// ============ WEBHOOK ============
+// ============ WEBHOOK HANDLER ============
 module.exports = async (req, res) => {
+    if (req.method === 'GET') {
+        const { action, user_id, task_id } = req.query;
+
+        if (action === 'get_channels') {
+            const { data: channels } = await supabase.from('channels').select('channel_id, channel_name, invite_link');
+            return res.status(200).json({ channels: channels || [] });
+        }
+
+        if (action === 'check_join' && user_id) {
+            const { data: channels } = await supabase.from('channels').select('*');
+            if (!channels || channels.length === 0) return res.status(200).json({ joined: true });
+            for (const channel of channels) {
+                try {
+                    const r = await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/getChatMember?chat_id=${channel.channel_id}&user_id=${user_id}`);
+                    const j = await r.json();
+                    if (!j.ok || ['left','kicked'].includes(j.result?.status)) return res.status(200).json({ joined: false });
+                } catch(e) { return res.status(200).json({ joined: false }); }
+            }
+            return res.status(200).json({ joined: true });
+        }
+
+        if (action === 'get_user' && user_id) {
+            const { data: user } = await supabase.from('bot_users').select('balance').eq('user_id', user_id).single();
+            return res.status(200).json({ balance: user?.balance || 0 });
+        }
+
+        if (action === 'task_remaining' && user_id && task_id) {
+            const today = new Date().toISOString().split('T')[0];
+            const { data: task } = await supabase.from('tasks').select('daily_limit').eq('id', task_id).single();
+            const dailyLimit = task?.daily_limit || 10;
+            const { data: comp } = await supabase.from('task_completions').select('count_today').eq('user_id', user_id).eq('task_id', task_id).eq('completed_at', today).single();
+            const done = comp?.count_today || 0;
+            return res.status(200).json({ remaining: dailyLimit - done, daily_limit: dailyLimit });
+        }
+
+        return res.status(200).send('EarnFlow Bot is running!');
+    }
+
     if (req.method === 'POST') {
+        // Mini App claim
+        if (req.body.action === 'claim_task') {
+            const { user_id, task_id } = req.body;
+            const today = new Date().toISOString().split('T')[0];
+            const { data: task } = await supabase.from('tasks').select('*').eq('id', task_id).single();
+            if (!task) return res.status(200).json({ success: false, message: 'টাস্ক নেই' });
+
+            const { data: comp } = await supabase.from('task_completions').select('*').eq('user_id', user_id).eq('task_id', task_id).eq('completed_at', today).single();
+            if (comp && comp.count_today >= task.daily_limit) return res.status(200).json({ success: false, message: 'লিমিট শেষ' });
+
+            if (comp) await supabase.from('task_completions').update({ count_today: comp.count_today + 1 }).eq('id', comp.id);
+            else await supabase.from('task_completions').insert({ user_id, task_id, completed_at: today, count_today: 1 });
+
+            await supabase.rpc('add_balance', { uid: user_id, amount: task.reward });
+            const { data: user } = await supabase.from('bot_users').select('balance').eq('user_id', user_id).single();
+            return res.status(200).json({ success: true, reward: task.reward, new_balance: user.balance });
+        }
+
+        // Telegram updates
         try { await bot.handleUpdate(req.body, res); }
         catch(e) { console.error(e); res.status(200).send('OK'); }
-    } else {
-        res.status(200).send('EarnFlow Bot is running!');
     }
 };
