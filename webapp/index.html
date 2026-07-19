@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EarnFlow - টাস্ক</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * {
             margin: 0;
@@ -111,6 +112,11 @@
     </div>
 
     <script>
+        // Telegram Web App Init
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+
         const adBtn = document.getElementById('adBtn');
         const claimBtn = document.getElementById('claimBtn');
         const timerEl = document.getElementById('timer');
@@ -119,10 +125,8 @@
         let countdown;
 
         adBtn.addEventListener('click', () => {
-            // Open ad
             window.open('https://google.com', '_blank');
             
-            // Start timer
             let sec = 15;
             adBtn.disabled = true;
             adBtn.style.opacity = '0.5';
@@ -146,6 +150,11 @@
             claimBtn.textContent = '✅ সম্পন্ন!';
             claimBtn.disabled = true;
             showMsg('success', '🎉 রিওয়ার্ড পাঠানো হয়েছে!');
+
+            // Send data to Telegram Bot
+            tg.sendData(JSON.stringify({ action: "claim" }));
+            tg.HapticFeedback.notification('success');
+            setTimeout(() => tg.close(), 1000);
         });
 
         function showMsg(type, text) {
