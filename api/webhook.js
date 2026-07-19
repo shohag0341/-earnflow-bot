@@ -75,6 +75,7 @@ bot.hears('📺 টাস্ক', async (ctx) => {
 });
 
 // Task detail and complete
+
 bot.action(/task_(.+)/, async (ctx) => {
     const taskId = ctx.match[1];
     const userId = ctx.from.id;
@@ -83,7 +84,6 @@ bot.action(/task_(.+)/, async (ctx) => {
     const { data: task } = await supabase.from('tasks').select('*').eq('id', taskId).single();
     if (!task) return ctx.answerCbQuery('টাস্ক পাওয়া যায়নি!');
 
-    // Check daily limit
     const { data: comp } = await supabase
         .from('task_completions')
         .select('*')
@@ -101,15 +101,54 @@ bot.action(/task_(.+)/, async (ctx) => {
 
     await ctx.answerCbQuery();
 
-    ctx.reply(`${task.icon || '📺'} **${task.title}**\n\n💰 রিওয়ার্ড: $${task.reward}\n📊 আজ বাকি: ${remaining}/${task.daily_limit}\n\n🔗 অ্যাড দেখতে নিচের বাটনে ক্লিক করুন:`, {
+    ctx.reply(`${task.icon || '📺'} **${task.title}**\n\n💰 রিওয়ার্ড: $${task.reward}\n📊 আজ বাকি: ${remaining}/${task.daily_limit}\n\n⏳ ১৫ সেকেন্ড অ্যাড দেখার পর রিওয়ার্ড নিন!`, {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [
                 [{ text: '🔗 অ্যাড দেখুন', url: task.ad_link }],
-                [{ text: '✅ রিওয়ার্ড নিন', callback_data: `complete_${task.id}` }]
+                [{ text: '⏳ ১৫ সেকেন্ড অপেক্ষা করুন...', callback_data: `wait_${task.id}` }]
             ]
         }
     });
+});
+
+
+
+
+// Complete task
+
+
+
+// Wait timer
+bot.action(/wait_(.+)/, async (ctx) => {
+    const taskId = ctx.match[1];
+    
+    await ctx.answerCbQuery('⏳ ১৫ সেকেন্ড অপেক্ষা করুন...', { show_alert: true });
+    
+    const msg = await ctx.reply('⏳ **১৫** সেকেন্ড অপেক্ষা করুন...', { parse_mode: 'Markdown' });
+    
+    for (let i = 14; i >= 0; i--) {
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+            await ctx.telegram.editMessageText(
+                msg.chat.id, msg.message_id, null,
+                `⏳ **${i}** সেকেন্ড অপেক্ষা করুন...`,
+                { parse_mode: 'Markdown' }
+            );
+        } catch(e) {}
+    }
+    
+    try {
+        await ctx.telegram.editMessageText(
+            msg.chat.id, msg.message_id, null,
+            '✅ এখন রিওয়ার্ড নিতে পারেন!',
+            {
+                reply_markup: {
+                    inline_keyboard: [[{ text: '🎁 রিওয়ার্ড নিন', callback_data: `complete_${taskId}` }]]
+                }
+            }
+        );
+    } catch(e) {}
 });
 
 // Complete task
@@ -121,7 +160,6 @@ bot.action(/complete_(.+)/, async (ctx) => {
     const { data: task } = await supabase.from('tasks').select('*').eq('id', taskId).single();
     if (!task) return ctx.answerCbQuery('টাস্ক পাওয়া যায়নি!', { show_alert: true });
 
-    // Check daily limit
     const { data: comp } = await supabase
         .from('task_completions')
         .select('*')
@@ -133,26 +171,27 @@ bot.action(/complete_(.+)/, async (ctx) => {
     const done = comp?.count_today || 0;
 
     if (done >= task.daily_limit) {
-        return ctx.answerCbQuery(`⚠️ আজকের লিমিট শেষ!`, { show_alert: true });
+        return ctx.answerCbQuery('⚠️ আজকের লিমিট শেষ!', { show_alert: true });
     }
 
-    // Save completion
     if (comp) {
         await supabase.from('task_completions').update({ count_today: comp.count_today + 1 }).eq('id', comp.id);
     } else {
         await supabase.from('task_completions').insert({ user_id: userId, task_id: taskId, completed_at: today, count_today: 1 });
     }
 
-    // Add balance
     await supabase.rpc('add_balance', { uid: userId, amount: task.reward });
 
-    // Get user
     const { data: user } = await supabase.from('bot_users').select('balance').eq('user_id', userId).single();
 
     await ctx.answerCbQuery('✅ রিওয়ার্ড যোগ হয়েছে!', { show_alert: true });
     await ctx.deleteMessage();
     ctx.reply(`✅ টাস্ক সম্পন্ন!\n\n📺 ${task.title}\n💰 +$${task.reward}\n💵 মোট ব্যালেন্স: $${user.balance.toFixed(2)}`);
 });
+
+
+
+
 
 bot.hears('💰 ব্যালেন্স', async (ctx) => {
     const user = await getUser(ctx.from.id);
@@ -204,6 +243,12 @@ bot.on('web_app_data', async (ctx) => {
     await supabase.rpc('add_balance', { uid: userId, amount: task.reward });
     ctx.reply(`✅ টাস্ক সম্পন্ন! +$${task.reward}`);
 });
+
+
+
+
+
+
 
 // ============ ADMIN PANEL ============
 
