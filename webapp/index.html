@@ -189,12 +189,14 @@ document.getElementById('claimBtn').addEventListener('click', async function(){
     btn.disabled = true;
 
     try {
-        const r = await fetch(`${BASE}/api/webhook`, {
+        const response = await fetch(`${BASE}/api/webhook`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({action:'claim_task', user_id: uid, task_id: taskData?.task_id})
         });
-        const d = await r.json();
+        const text = await response.text();
+        let d;
+        try { d = JSON.parse(text); } catch(e) { d = null; }
 
         if (d && d.success) {
             btn.textContent = '✅ সম্পন্ন!';
@@ -203,6 +205,7 @@ document.getElementById('claimBtn').addEventListener('click', async function(){
             document.getElementById('userBalance').textContent = '$'+d.new_balance.toFixed(2);
             tg.HapticFeedback.notification('success');
             timerDone = false;
+            btn.onclick = null;
             setTimeout(function(){ tg.close(); }, 2000);
         } else {
             btn.textContent = '🎁 রিওয়ার্ড নিন';
@@ -213,8 +216,6 @@ document.getElementById('claimBtn').addEventListener('click', async function(){
     } catch(e) {
         btn.textContent = '🎁 রিওয়ার্ড নিন';
         btn.disabled = false;
-        document.getElementById('msg').className = 'msg show error';
-        document.getElementById('msg').textContent = 'দয়া করে আবার চেষ্টা করুন!';
     }
 });
             
