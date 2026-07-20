@@ -124,22 +124,9 @@ bot.hears('🏧 উইথড্র', async (ctx) => {
     const min = parseFloat(await getSetting('min_withdraw'));
     const user = await getUser(ctx.from.id);
     if (user.balance < min) return ctx.reply(`⚠️ মিনিমাম $${min}\nআপনার ব্যালেন্স: $${user.balance.toFixed(2)}`);
-    sessions[ctx.from.id] = { action: 'withdraw', step: 'method' };
-    ctx.reply('🏧 মেথড:', {
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: 'Bkash', callback_data: 'wmet_bkash' }],
-                [{ text: 'Nagad', callback_data: 'wmet_nagad' }],
-                [{ text: 'Rocket', callback_data: 'wmet_rocket' }]
-            ]
-        }
-    });
-});
-
-bot.action(/wmet_(.+)/, async (ctx) => {
-    sessions[ctx.from.id] = { action: 'withdraw', step: 'number', method: ctx.match[1] };
-    await ctx.answerCbQuery();
-    ctx.reply(`📱 ${ctx.match[1].toUpperCase()} নাম্বার:\n/cancel`);
+    
+    sessions[ctx.from.id] = { action: 'withdraw', step: 'amount', max: user.balance };
+    ctx.reply(`🏧 উইথড্র\n\n💰 ম্যাক্স: $${user.balance.toFixed(2)}\n📝 পরিমাণ লিখুন (সর্বোচ্চ $${user.balance.toFixed(2)}):\n/cancel`);
 });
 
 // ============ ADMIN ============
@@ -186,7 +173,8 @@ bot.command('pendings', async (ctx) => {
     const { data: w } = await supabase.from('withdrawals').select('*').eq('status', 'pending');
     if (w?.length) {
         for (const wd of w) {
-            ctx.reply(`🏧 #${wd.id}\n👤 ${wd.user_id}\n💰 $${wd.amount}\n📱 ${wd.method}: ${wd.account_number}`, {
+            ctx.reply(`🏧 #${wd.id}\n👤 ${wd.user_id}\n💰 $${wd.amount}\n📱 ${wd.method}: \`${wd.account_number}\``, {
+                parse_mode: 'Markdown',
                 reply_markup: { inline_keyboard: [[
                     { text: '✅ Approve', callback_data: `wapp_${wd.id}` },
                     { text: '❌ Reject', callback_data: `wrej_${wd.id}` }
@@ -197,7 +185,8 @@ bot.command('pendings', async (ctx) => {
     const { data: d } = await supabase.from('deposits').select('*').eq('status', 'pending');
     if (d?.length) {
         for (const dp of d) {
-            ctx.reply(`💳 #${dp.id}\n👤 ${dp.user_id}\n💰 $${dp.amount}\n📱 ${dp.method}\nTXN: ${dp.transaction_id}`, {
+            ctx.reply(`💳 #${dp.id}\n👤 ${dp.user_id}\n💰 $${dp.amount}\n📱 ${dp.method}\nTXN: \`${dp.transaction_id}\``, {
+                parse_mode: 'Markdown',
                 reply_markup: { inline_keyboard: [[
                     { text: '✅ Approve', callback_data: `dapp_${dp.id}` },
                     { text: '❌ Reject', callback_data: `drej_${dp.id}` }
@@ -214,7 +203,7 @@ bot.action(/wapp_(.+)/, async (ctx) => {
     const { data: w } = await supabase.from('withdrawals').select('*').eq('id', id).single();
     if (!w) return ctx.answerCbQuery('না');
     await supabase.from('withdrawals').update({ status: 'approved' }).eq('id', id);
-    ctx.telegram.sendMessage(w.user_id, '✅ উইথড্র অ্যাপ্রুভ!');
+    ctx.telegram.sendMessage(w.user_id, '✅ আপনার উইথড্র অ্যাপ্রুভ হয়েছে!');
     await ctx.answerCbQuery('✅'); await ctx.deleteMessage();
 });
 
@@ -223,10 +212,10 @@ bot.action(/wrej_(.+)/, async (ctx) => {
     const id = ctx.match[1];
     const { data: w } = await supabase.from('withdrawals').select('*').eq('id', id).single();
     if (!w) return ctx.answerCbQuery('না');
-    await supabase.from('withdrawals').update({ status: 'rejected' }).eq('id', id);
-    await supabase.rpc('add_balance', { uid: w.user_id, amount: w.amount });
-    ctx.telegram.sendMessage(w.user_id, '❌ উইথড্র রিজেক্ট, টাকা ফেরত।');
-    await ctx.answerCbQuery('✅'); await ctx.deleteMessage();
+    
+    sessions[ctx.from.id] = { action: 'reject_reason', withdrawId: id, userId: w.user_id, amount: w.amount };
+    await ctx.answerCbQuery();
+    ctx.reply('❌ রিজেক্টের কারণ লিখুন:');
 });
 
 bot.action(/dapp_(.+)/, async (ctx) => {
@@ -266,20 +255,58 @@ bot.on('text', async (ctx, next) => {
     else if (s.action === 'removechannel') { await supabase.from('channels').delete().eq('id',parseInt(t)); ctx.reply('✅'); delete sessions[uid]; }
     else if (s.action === 'deposit' && s.step === 'txid') {
         await supabase.from('deposits').insert({ user_id: uid, amount: s.amount, method: s.method, transaction_id: t, status: 'pending' });
-        ctx.reply(`✅ জমা!\n💰 $${s.amount}\n📱 ${s.method}\nTXN: ${t}`);
-        ctx.telegram.sendMessage(ADMIN_ID, `🔔 ডিপোজিট\n👤 ${uid}\n💰 $${s.amount}\n📱 ${s.method}\nTXN: ${t}`);
+        ctx.reply(`✅ জমা!\n💰 $${s.amount}\n📱 ${s.method}\nTXN: \`${t}\``, { parse_mode: 'Markdown' });
+        ctx.telegram.sendMessage(ADMIN_ID, `🔔 ডিপোজিট\n👤 ${uid}\n💰 $${s.amount}\n📱 ${s.method}\nTXN: \`${t}\``, { parse_mode: 'Markdown' });
         delete sessions[uid];
     }
-    else if (s.action === 'withdraw' && s.step === 'number') {
+    else if (s.action === 'withdraw' && s.step === 'amount') {
+        const amt = parseFloat(t);
+        if (isNaN(amt) || amt <= 0) return ctx.reply('❌ সঠিক পরিমাণ লিখুন।');
+        if (amt > s.max) return ctx.reply(`⚠️ সর্বোচ্চ $${s.max.toFixed(2)}`);
         const min = parseFloat(await getSetting('min_withdraw'));
-        const user = await getUser(uid);
-        if (user.balance < min) { delete sessions[uid]; return ctx.reply('⚠️ ব্যালেন্স কম'); }
-        const amt = user.balance;
-        await supabase.from('withdrawals').insert({ user_id: uid, amount: amt, method: s.method, account_number: t, status: 'pending' });
-        await supabase.rpc('add_balance', { uid: uid, amount: -amt });
-        ctx.reply(`✅ উইথড্র!\n💰 $${amt}\n📱 ${s.method}: ${t}`);
-        ctx.telegram.sendMessage(ADMIN_ID, `🔔 উইথড্র\n👤 ${uid}\n💰 $${amt}\n📱 ${s.method}: ${t}`);
+        if (amt < min) return ctx.reply(`⚠️ মিনিমাম $${min}`);
+        
+        s.amount = amt;
+        s.step = 'method';
+        ctx.reply('🏧 পেমেন্ট মেথড:', {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: 'Bkash', callback_data: 'wmet_bkash' }],
+                    [{ text: 'Nagad', callback_data: 'wmet_nagad' }],
+                    [{ text: 'Rocket', callback_data: 'wmet_rocket' }],
+                    [{ text: 'Binance (BSC)', callback_data: 'wmet_binance' }]
+                ]
+            }
+        });
+    }
+    else if (s.action === 'withdraw' && s.step === 'number') {
+        const addr = t.trim();
+        await supabase.from('withdrawals').insert({ user_id: uid, amount: s.amount, method: s.method, account_number: addr, status: 'pending' });
+        await supabase.rpc('add_balance', { uid: uid, amount: -s.amount });
+        ctx.reply(`✅ উইথড্র!\n💰 $${s.amount}\n📱 ${s.method}: \`${addr}\``, { parse_mode: 'Markdown' });
+        ctx.telegram.sendMessage(ADMIN_ID, `🔔 উইথড্র\n👤 ${uid}\n💰 $${s.amount}\n📱 ${s.method}: \`${addr}\``, { parse_mode: 'Markdown' });
         delete sessions[uid];
+    }
+    else if (s.action === 'reject_reason') {
+        const reason = t;
+        await supabase.from('withdrawals').update({ status: 'rejected', admin_note: reason }).eq('id', s.withdrawId);
+        await supabase.rpc('add_balance', { uid: s.userId, amount: s.amount });
+        ctx.telegram.sendMessage(s.userId, `❌ উইথড্র রিজেক্ট\n💰 $${s.amount} ফেরত\n📝 কারণ: ${reason}`);
+        ctx.reply('✅ রিজেক্ট + টাকা ফেরত + নোটিফিকেশন পাঠানো হয়েছে।');
+        delete sessions[uid];
+    }
+});
+
+bot.action(/wmet_(.+)/, async (ctx) => {
+    const method = ctx.match[1];
+    if (!sessions[ctx.from.id]) return ctx.answerCbQuery('⚠️');
+    sessions[ctx.from.id].method = method;
+    sessions[ctx.from.id].step = 'number';
+    await ctx.answerCbQuery();
+    if (method === 'binance') {
+        ctx.reply('🔗 BSC Wallet Address লিখুন (0x...):\n/cancel\n\n⚠️ BEP-20 নেটওয়ার্ক ব্যবহার করুন।');
+    } else {
+        ctx.reply(`📱 ${method.toUpperCase()} নাম্বার লিখুন:\n/cancel\n\n\`ক্লিক করলেই কপি হবে\``, { parse_mode: 'Markdown' });
     }
 });
 
@@ -293,6 +320,7 @@ module.exports = async (req, res) => {
         if (action === 'check_ad' && user_id && task_id) { const td = new Date().toISOString().split('T')[0]; const { data: av } = await supabase.from('ad_views').select('*').eq('user_id',user_id).eq('task_id',task_id).eq('viewed_at',td).single(); return res.json({ viewed: !!av, claimed: av?.is_claimed || false }); }
         return res.send('OK');
     }
+
     if (req.method === 'POST') {
         if (req.body?.action === 'ad_viewed') { const { user_id, task_id } = req.body; const td = new Date().toISOString().split('T')[0]; const { data: ex } = await supabase.from('ad_views').select('*').eq('user_id',user_id).eq('task_id',task_id).eq('viewed_at',td).single(); if (!ex) await supabase.from('ad_views').insert({ user_id, task_id, viewed_at: td, is_claimed: false }); return res.json({ success: true }); }
         if (req.body?.action === 'claim_task') { const { user_id, task_id } = req.body; const td = new Date().toISOString().split('T')[0]; const { data: av } = await supabase.from('ad_views').select('*').eq('user_id',user_id).eq('task_id',task_id).eq('viewed_at',td).single(); if (!av || av.is_claimed) return res.json({ success: false, message: 'আগে অ্যাড দেখুন!' }); const { data: tk } = await supabase.from('tasks').select('*').eq('id',task_id).single(); if (!tk) return res.json({ success: false, message: 'টাস্ক নেই' }); const { data: cp } = await supabase.from('task_completions').select('*').eq('user_id',user_id).eq('task_id',task_id).eq('completed_at',td).single(); if (cp && cp.count_today >= tk.daily_limit) return res.json({ success: false, message: 'লিমিট শেষ' }); if (cp) await supabase.from('task_completions').update({ count_today: cp.count_today + 1 }).eq('id',cp.id); else await supabase.from('task_completions').insert({ user_id, task_id, completed_at: td, count_today: 1 }); await supabase.rpc('add_balance', { uid: user_id, amount: tk.reward }); await supabase.from('ad_views').update({ is_claimed: true }).eq('id', av.id); const { data: u } = await supabase.from('bot_users').select('balance').eq('user_id',user_id).single(); return res.json({ success: true, reward: tk.reward, new_balance: u.balance }); }
