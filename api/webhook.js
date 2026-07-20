@@ -87,179 +87,167 @@ bot.hears('💳 ডিপোজিট', async (ctx) => {
     const { data: packages } = await supabase.from('packages').select('*').eq('is_active', true);
     if (!packages || packages.length === 0) return ctx.reply('⚠️ কোনো প্যাকেজ নেই।');
     const buttons = packages.map(pkg => {
-        return [{ text: `💎 ${pkg.name} - $${pkg.price}`, callback_data: `deposit_${pkg.id}` }];
+        return [{ text: `💎 ${pkg.name} - $${pkg.price}`, callback_data: `dep_${pkg.id}` }];
     });
-    ctx.reply('💳 ডিপোজিট প্যাকেজ সিলেক্ট করুন:', { reply_markup: { inline_keyboard: buttons } });
+    ctx.reply('💳 প্যাকেজ সিলেক্ট করুন:', { reply_markup: { inline_keyboard: buttons } });
 });
 
-bot.action(/deposit_(.+)/, async (ctx) => {
-    const packageId = ctx.match[1];
-    const { data: pkg } = await supabase.from('packages').select('*').eq('id', packageId).single();
-    if (!pkg) return ctx.answerCbQuery('প্যাকেজ পাওয়া যায়নি!');
+bot.action(/dep_(.+)/, async (ctx) => {
+    const pkgId = ctx.match[1];
+    const { data: pkg } = await supabase.from('packages').select('*').eq('id', pkgId).single();
+    if (!pkg) return ctx.answerCbQuery('পাওয়া যায়নি!');
     await ctx.answerCbQuery();
-    sessions[ctx.from.id] = { action: 'deposit', step: 'method', packageId: packageId, amount: pkg.price };
-    ctx.reply(`💳 **${pkg.name}** - $${pkg.price}\n\nপেমেন্ট মেথড সিলেক্ট করুন:`, {
+    sessions[ctx.from.id] = { action: 'deposit', step: 'method', amount: pkg.price, pkgId: pkgId };
+    ctx.reply(`💳 **${pkg.name}** - $${pkg.price}\n\nপেমেন্ট মেথড:`, {
         parse_mode: 'Markdown',
         reply_markup: {
             inline_keyboard: [
-                [{ text: 'Bkash', callback_data: 'd_method_bkash' }],
-                [{ text: 'Nagad', callback_data: 'd_method_nagad' }],
-                [{ text: 'Rocket', callback_data: 'd_method_rocket' }],
-                [{ text: 'Binance', callback_data: 'd_method_binance' }]
+                [{ text: 'Bkash', callback_data: 'dmet_bkash' }],
+                [{ text: 'Nagad', callback_data: 'dmet_nagad' }],
+                [{ text: 'Rocket', callback_data: 'dmet_rocket' }],
+                [{ text: 'Binance', callback_data: 'dmet_binance' }]
             ]
         }
     });
 });
 
-bot.action(/d_method_(.+)/, async (ctx) => {
-    const method = ctx.match[1];
+bot.action(/dmet_(.+)/, async (ctx) => {
     if (!sessions[ctx.from.id]) return ctx.answerCbQuery('⚠️ আগে প্যাকেজ সিলেক্ট করুন!');
-    sessions[ctx.from.id].method = method;
+    sessions[ctx.from.id].method = ctx.match[1];
     sessions[ctx.from.id].step = 'txid';
     await ctx.answerCbQuery();
-    ctx.reply(`📱 **${method.toUpperCase()}** সেন্ড করুন:\n\nAmount: $${sessions[ctx.from.id].amount}\n\nপেমেন্ট করার পর Transaction ID লিখুন:\n/cancel বাতিল`, { parse_mode: 'Markdown' });
+    ctx.reply(`📱 **${ctx.match[1].toUpperCase()}**-এ $${sessions[ctx.from.id].amount} সেন্ড করে TXN ID লিখুন:\n/cancel`);
 });
 
 // ============ WITHDRAW ============
 bot.hears('🏧 উইথড্র', async (ctx) => {
-    const minWithdraw = await getSetting('min_withdraw');
+    const min = parseFloat(await getSetting('min_withdraw'));
     const user = await getUser(ctx.from.id);
-    if (user.balance < parseFloat(minWithdraw)) {
-        return ctx.reply(`⚠️ মিনিমাম উইথড্র $${minWithdraw}\nআপনার ব্যালেন্স: $${user.balance.toFixed(2)}`);
-    }
+    if (user.balance < min) return ctx.reply(`⚠️ মিনিমাম $${min}\nআপনার ব্যালেন্স: $${user.balance.toFixed(2)}`);
     sessions[ctx.from.id] = { action: 'withdraw', step: 'method' };
-    ctx.reply('🏧 উইথড্র\n\nপেমেন্ট মেথড সিলেক্ট করুন:', {
+    ctx.reply('🏧 মেথড:', {
         reply_markup: {
             inline_keyboard: [
-                [{ text: 'Bkash', callback_data: 'w_method_bkash' }],
-                [{ text: 'Nagad', callback_data: 'w_method_nagad' }],
-                [{ text: 'Rocket', callback_data: 'w_method_rocket' }]
+                [{ text: 'Bkash', callback_data: 'wmet_bkash' }],
+                [{ text: 'Nagad', callback_data: 'wmet_nagad' }],
+                [{ text: 'Rocket', callback_data: 'wmet_rocket' }]
             ]
         }
     });
 });
 
-bot.action(/w_method_(.+)/, async (ctx) => {
-    const method = ctx.match[1];
-    sessions[ctx.from.id] = { action: 'withdraw', step: 'number', method: method };
+bot.action(/wmet_(.+)/, async (ctx) => {
+    sessions[ctx.from.id] = { action: 'withdraw', step: 'number', method: ctx.match[1] };
     await ctx.answerCbQuery();
-    ctx.reply(`📱 আপনার ${method.toUpperCase()} নাম্বার লিখুন:\n/cancel বাতিল`);
+    ctx.reply(`📱 ${ctx.match[1].toUpperCase()} নাম্বার:\n/cancel`);
 });
 
 // ============ ADMIN ============
-bot.command('admin', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; ctx.reply('👑 /addtask /removetask /tasks\n/addchannel /removechannel /channels\n/users /pendings /addpackage\n/setref /setminwd'); });
+bot.command('admin', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+    ctx.reply('👑\n/addtask /removetask /tasks\n/addchannel /removechannel /channels\n/addpackage /users /pendings\n/setref /setminwd');
+});
+
 bot.command('addtask', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; sessions[ctx.from.id] = { action: 'addtask', step: 'title' }; ctx.reply('📝 টাইটেল:'); });
-bot.command('removetask', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; const { data: t } = await supabase.from('tasks').select('id,title'); if (!t?.length) return ctx.reply('⚠️ নেই'); ctx.reply('🗑️ আইডি:\n'+t.map(x=>`🆔 ${x.id}: ${x.title}`).join('\n')); sessions[ctx.from.id]={action:'removetask',step:'confirm'}; });
+bot.command('removetask', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; const { data: t } = await supabase.from('tasks').select('id,title'); if (!t?.length) return ctx.reply('⚠️ নেই'); ctx.reply('🗑️\n'+t.map(x=>`🆔 ${x.id}: ${x.title}`).join('\n')); sessions[ctx.from.id]={action:'removetask',step:'confirm'}; });
 bot.command('tasks', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; const { data: t } = await supabase.from('tasks').select('*'); if (!t?.length) return ctx.reply('⚠️ নেই'); ctx.reply('📺\n'+t.map(x=>`🆔 ${x.id}: ${x.title} - $${x.reward}`).join('\n')); });
-bot.command('addchannel', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; sessions[ctx.from.id] = { action: 'addchannel', step: 'username' }; ctx.reply('📢 @username:'); });
-bot.command('removechannel', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; const { data: c } = await supabase.from('channels').select('*'); if (!c?.length) return ctx.reply('⚠️ নেই'); ctx.reply('🗑️ আইডি:\n'+c.map(x=>`🆔 ${x.id}: ${x.channel_name}`).join('\n')); sessions[ctx.from.id]={action:'removechannel',step:'confirm'}; });
+bot.command('addchannel', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; sessions[ctx.from.id] = { action: 'addchannel', step: 'username' }; ctx.reply('📢 @:'); });
+bot.command('removechannel', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; const { data: c } = await supabase.from('channels').select('*'); if (!c?.length) return ctx.reply('⚠️ নেই'); ctx.reply('🗑️\n'+c.map(x=>`🆔 ${x.id}: ${x.channel_name}`).join('\n')); sessions[ctx.from.id]={action:'removechannel',step:'confirm'}; });
 bot.command('channels', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; const { data: c } = await supabase.from('channels').select('*'); if (!c?.length) return ctx.reply('⚠️ নেই'); ctx.reply('📢\n'+c.map(x=>`🆔 ${x.id}: ${x.channel_name}`).join('\n')); });
 bot.command('users', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; const { data: u } = await supabase.from('bot_users').select('*').order('joined_at',{ascending:false}).limit(20); if (!u?.length) return ctx.reply('⚠️ নেই'); ctx.reply('👥\n'+u.map(x=>`🆔 ${x.user_id}: ${x.first_name||'N/A'} - $${x.balance.toFixed(2)}`).join('\n')); });
-bot.command('cancel', async (ctx) => { delete sessions[ctx.from.id]; ctx.reply('❌ বাতিল'); });
+bot.command('cancel', async (ctx) => { delete sessions[ctx.from.id]; ctx.reply('❌'); });
 
 bot.command('setref', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
-    const amount = parseFloat(ctx.message.text.split(' ')[1]);
-    if (!amount) return ctx.reply('⚠️ /setref 0.05');
-    await supabase.from('settings').upsert({ key: 'refer_reward', value: amount.toString() });
-    ctx.reply(`✅ রেফারেল রিওয়ার্ড $${amount}`);
+    const v = parseFloat(ctx.message.text.split(' ')[1]);
+    if (!v) return ctx.reply('⚠️ /setref 0.05');
+    await supabase.from('settings').upsert({ key: 'refer_reward', value: v.toString() }, { onConflict: 'key' });
+    ctx.reply(`✅ রেফারেল: $${v}`);
 });
 
 bot.command('setminwd', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
-    const amount = parseFloat(ctx.message.text.split(' ')[1]);
-    if (!amount) return ctx.reply('⚠️ /setminwd 5');
-    await supabase.from('settings').upsert({ key: 'min_withdraw', value: amount.toString() });
-    ctx.reply(`✅ মিনিমাম উইথড্র $${amount}`);
+    const v = parseFloat(ctx.message.text.split(' ')[1]);
+    if (!v) return ctx.reply('⚠️ /setminwd 5');
+    await supabase.from('settings').upsert({ key: 'min_withdraw', value: v.toString() }, { onConflict: 'key' });
+    ctx.reply(`✅ মিন উইথড্র: $${v}`);
 });
 
 bot.command('addpackage', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
-    const text = ctx.message.text.replace('/addpackage ', '');
-    const args = text.split('|');
-    if (args.length < 2) return ctx.reply('⚠️ /addpackage নাম | মূল্য | বিবরণ');
+    const args = ctx.message.text.replace('/addpackage ', '').split('|');
+    if (args.length < 2) return ctx.reply('⚠️ /addpackage নাম | মূল্য');
     await supabase.from('packages').insert({ name: args[0].trim(), price: parseFloat(args[1].trim()), description: args[2]?.trim() || '' });
     ctx.reply('✅ প্যাকেজ যোগ হয়েছে।');
 });
 
 bot.command('pendings', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
-
-    const { data: withdrawals } = await supabase.from('withdrawals').select('*').eq('status', 'pending');
-    if (withdrawals && withdrawals.length > 0) {
-        ctx.reply('🏧 **পেন্ডিং উইথড্র:**', { parse_mode: 'Markdown' });
-        for (const wd of withdrawals) {
+    const { data: w } = await supabase.from('withdrawals').select('*').eq('status', 'pending');
+    if (w?.length) {
+        for (const wd of w) {
             ctx.reply(`🏧 #${wd.id}\n👤 ${wd.user_id}\n💰 $${wd.amount}\n📱 ${wd.method}: ${wd.account_number}`, {
-                reply_markup: {
-                    inline_keyboard: [[
-                        { text: '✅ Approve', callback_data: `w_confirm_${wd.user_id}_${wd.id}_approve` },
-                        { text: '❌ Reject', callback_data: `w_confirm_${wd.user_id}_${wd.id}_reject` }
-                    ]]
-                }
+                reply_markup: { inline_keyboard: [[
+                    { text: '✅ Approve', callback_data: `wapp_${wd.id}` },
+                    { text: '❌ Reject', callback_data: `wrej_${wd.id}` }
+                ]]}
             });
         }
     }
-
-    const { data: deposits } = await supabase.from('deposits').select('*').eq('status', 'pending');
-    if (deposits && deposits.length > 0) {
-        ctx.reply('💳 **পেন্ডিং ডিপোজিট:**', { parse_mode: 'Markdown' });
-        for (const dep of deposits) {
-            ctx.reply(`💳 #${dep.id}\n👤 ${dep.user_id}\n💰 $${dep.amount}\n📱 ${dep.method}\n🔢 TXN: ${dep.transaction_id}`, {
-                reply_markup: {
-                    inline_keyboard: [[
-                        { text: '✅ Approve', callback_data: `dep_confirm_${dep.id}_approve` },
-                        { text: '❌ Reject', callback_data: `dep_confirm_${dep.id}_reject` }
-                    ]]
-                }
+    const { data: d } = await supabase.from('deposits').select('*').eq('status', 'pending');
+    if (d?.length) {
+        for (const dp of d) {
+            ctx.reply(`💳 #${dp.id}\n👤 ${dp.user_id}\n💰 $${dp.amount}\n📱 ${dp.method}\nTXN: ${dp.transaction_id}`, {
+                reply_markup: { inline_keyboard: [[
+                    { text: '✅ Approve', callback_data: `dapp_${dp.id}` },
+                    { text: '❌ Reject', callback_data: `drej_${dp.id}` }
+                ]]}
             });
         }
     }
-
-    if ((!withdrawals || withdrawals.length === 0) && (!deposits || deposits.length === 0)) {
-        ctx.reply('⚠️ কোনো পেন্ডিং রিকোয়েস্ট নেই।');
-    }
+    if ((!w?.length) && (!d?.length)) ctx.reply('⚠️ পেন্ডিং নেই।');
 });
 
-bot.action(/w_confirm_(.+)/, async (ctx) => {
-    const userId = parseInt(ctx.match[1]);
+bot.action(/wapp_(.+)/, async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
-    const parts = ctx.callbackQuery.data.split('_');
-    const withdrawId = parts[2];
-    const action = parts[3];
-
-    if (action === 'approve') {
-        await supabase.from('withdrawals').update({ status: 'approved' }).eq('id', withdrawId);
-        ctx.telegram.sendMessage(userId, '✅ আপনার উইথড্র অ্যাপ্রুভ হয়েছে!');
-    } else {
-        const { data: w } = await supabase.from('withdrawals').select('*').eq('id', withdrawId).single();
-        await supabase.from('withdrawals').update({ status: 'rejected' }).eq('id', withdrawId);
-        await supabase.rpc('add_balance', { uid: userId, amount: w.amount });
-        ctx.telegram.sendMessage(userId, '❌ আপনার উইথড্র রিজেক্ট হয়েছে, ব্যালেন্স ফেরত দেওয়া হয়েছে।');
-    }
-    await ctx.answerCbQuery('✅ সম্পন্ন');
-    await ctx.deleteMessage();
+    const id = ctx.match[1];
+    const { data: w } = await supabase.from('withdrawals').select('*').eq('id', id).single();
+    if (!w) return ctx.answerCbQuery('না');
+    await supabase.from('withdrawals').update({ status: 'approved' }).eq('id', id);
+    ctx.telegram.sendMessage(w.user_id, '✅ উইথড্র অ্যাপ্রুভ!');
+    await ctx.answerCbQuery('✅'); await ctx.deleteMessage();
 });
 
-bot.action(/dep_confirm_(.+)/, async (ctx) => {
+bot.action(/wrej_(.+)/, async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return;
-    const parts = ctx.callbackQuery.data.split('_');
-    const depositId = parts[2];
-    const action = parts[3];
+    const id = ctx.match[1];
+    const { data: w } = await supabase.from('withdrawals').select('*').eq('id', id).single();
+    if (!w) return ctx.answerCbQuery('না');
+    await supabase.from('withdrawals').update({ status: 'rejected' }).eq('id', id);
+    await supabase.rpc('add_balance', { uid: w.user_id, amount: w.amount });
+    ctx.telegram.sendMessage(w.user_id, '❌ উইথড্র রিজেক্ট, টাকা ফেরত।');
+    await ctx.answerCbQuery('✅'); await ctx.deleteMessage();
+});
 
-    const { data: deposit } = await supabase.from('deposits').select('*').eq('id', depositId).single();
-    if (!deposit) return ctx.answerCbQuery('ডিপোজিট পাওয়া যায়নি!');
+bot.action(/dapp_(.+)/, async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+    const id = ctx.match[1];
+    const { data: d } = await supabase.from('deposits').select('*').eq('id', id).single();
+    if (!d) return ctx.answerCbQuery('না');
+    await supabase.from('deposits').update({ status: 'approved' }).eq('id', id);
+    await supabase.rpc('add_balance', { uid: d.user_id, amount: d.amount });
+    ctx.telegram.sendMessage(d.user_id, '✅ ডিপোজিট অ্যাপ্রুভ! ব্যালেন্স যোগ হয়েছে।');
+    await ctx.answerCbQuery('✅'); await ctx.deleteMessage();
+});
 
-    if (action === 'approve') {
-        await supabase.from('deposits').update({ status: 'approved' }).eq('id', depositId);
-        await supabase.rpc('add_balance', { uid: deposit.user_id, amount: deposit.amount });
-        ctx.telegram.sendMessage(deposit.user_id, `✅ আপনার $${deposit.amount} ডিপোজিট অ্যাপ্রুভ হয়েছে!\n💰 ব্যালেন্সে যোগ হয়েছে।`);
-    } else {
-        await supabase.from('deposits').update({ status: 'rejected' }).eq('id', depositId);
-        ctx.telegram.sendMessage(deposit.user_id, `❌ আপনার $${deposit.amount} ডিপোজিট রিজেক্ট হয়েছে।`);
-    }
-
-    await ctx.answerCbQuery('✅ সম্পন্ন');
-    await ctx.deleteMessage();
+bot.action(/drej_(.+)/, async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) return;
+    const id = ctx.match[1];
+    const { data: d } = await supabase.from('deposits').select('*').eq('id', id).single();
+    if (!d) return ctx.answerCbQuery('না');
+    await supabase.from('deposits').update({ status: 'rejected' }).eq('id', id);
+    ctx.telegram.sendMessage(d.user_id, '❌ ডিপোজিট রিজেক্ট।');
+    await ctx.answerCbQuery('✅'); await ctx.deleteMessage();
 });
 
 bot.on('text', async (ctx, next) => {
@@ -269,34 +257,31 @@ bot.on('text', async (ctx, next) => {
     if (t.startsWith('/')) return next();
 
     if (s.action === 'addtask') {
-        if (s.step === 'title') { s.title = t; s.step = 'reward'; return ctx.reply('💰 রিওয়ার্ড:'); }
-        if (s.step === 'reward') { const r = parseFloat(t); if (isNaN(r)) return ctx.reply('❌ সংখ্যা'); s.reward = r; s.step = 'ad_link'; return ctx.reply('🔗 লিংক:'); }
-        if (s.step === 'ad_link') { s.ad_link = t; s.step = 'daily_limit'; return ctx.reply('📊 লিমিট:'); }
-        if (s.step === 'daily_limit') { const l = parseInt(t); if (isNaN(l)) return ctx.reply('❌ সংখ্যা'); await supabase.from('tasks').insert({title:s.title,reward:s.reward,ad_link:s.ad_link,icon:'📺',daily_limit:l}); ctx.reply(`✅ ${s.title} - $${s.reward}`); delete sessions[uid]; }
+        if (s.step === 'title') { s.title = t; s.step = 'reward'; return ctx.reply('💰:'); }
+        if (s.step === 'reward') { const r = parseFloat(t); if (isNaN(r)) return ctx.reply('❌'); s.reward = r; s.step = 'ad_link'; return ctx.reply('🔗:'); }
+        if (s.step === 'ad_link') { s.ad_link = t; s.step = 'daily_limit'; return ctx.reply('📊:'); }
+        if (s.step === 'daily_limit') { const l = parseInt(t); if (isNaN(l)) return ctx.reply('❌'); await supabase.from('tasks').insert({title:s.title,reward:s.reward,ad_link:s.ad_link,icon:'📺',daily_limit:l}); ctx.reply(`✅ ${s.title} - $${s.reward}`); delete sessions[uid]; }
     } else if (s.action === 'removetask') { await supabase.from('tasks').delete().eq('id',parseInt(t)); ctx.reply('✅'); delete sessions[uid]; }
     else if (s.action === 'addchannel') { const un = t.replace('@',''); try { const ch = await ctx.telegram.getChat(`@${un}`); let lk = `https://t.me/${un}`; try { lk = (await ctx.telegram.createChatInviteLink(ch.id)).invite_link; } catch(e){} await supabase.from('channels').insert({channel_id:ch.id,channel_name:ch.title,invite_link:lk}); ctx.reply(`✅ ${ch.title}`); } catch(e) { ctx.reply('❌'); } delete sessions[uid]; }
     else if (s.action === 'removechannel') { await supabase.from('channels').delete().eq('id',parseInt(t)); ctx.reply('✅'); delete sessions[uid]; }
     else if (s.action === 'deposit' && s.step === 'txid') {
         await supabase.from('deposits').insert({ user_id: uid, amount: s.amount, method: s.method, transaction_id: t, status: 'pending' });
-        ctx.reply(`✅ ডিপোজিট সাবমিট!\n💰 $${s.amount}\n📱 ${s.method}\n🔢 TXN: ${t}\n⏳ অ্যাডমিন ভেরিফাই করবে।`);
-        ctx.telegram.sendMessage(ADMIN_ID, `🔔 নতুন ডিপোজিট!\n👤 ${uid}\n💰 $${s.amount}\n📱 ${s.method}\n🔢 TXN: ${t}`);
+        ctx.reply(`✅ জমা!\n💰 $${s.amount}\n📱 ${s.method}\nTXN: ${t}`);
+        ctx.telegram.sendMessage(ADMIN_ID, `🔔 ডিপোজিট\n👤 ${uid}\n💰 $${s.amount}\n📱 ${s.method}\nTXN: ${t}`);
         delete sessions[uid];
     }
     else if (s.action === 'withdraw' && s.step === 'number') {
-        const minWithdraw = parseFloat(await getSetting('min_withdraw'));
+        const min = parseFloat(await getSetting('min_withdraw'));
         const user = await getUser(uid);
-        if (user.balance < minWithdraw) { delete sessions[uid]; return ctx.reply('⚠️ ব্যালেন্স কম।'); }
-        const amount = user.balance;
-        await supabase.from('withdrawals').insert({ user_id: uid, amount: amount, method: s.method, account_number: t, status: 'pending' });
-        await supabase.rpc('add_balance', { uid: uid, amount: -amount });
-        ctx.reply(`✅ উইথড্র রিকোয়েস্ট সাবমিট!\n💰 $${amount}\n📱 ${s.method}: ${t}`);
-        ctx.telegram.sendMessage(ADMIN_ID, `🔔 নতুন উইথড্র!\n👤 ${uid}\n💰 $${amount}\n📱 ${s.method}: ${t}`);
+        if (user.balance < min) { delete sessions[uid]; return ctx.reply('⚠️ ব্যালেন্স কম'); }
+        const amt = user.balance;
+        await supabase.from('withdrawals').insert({ user_id: uid, amount: amt, method: s.method, account_number: t, status: 'pending' });
+        await supabase.rpc('add_balance', { uid: uid, amount: -amt });
+        ctx.reply(`✅ উইথড্র!\n💰 $${amt}\n📱 ${s.method}: ${t}`);
+        ctx.telegram.sendMessage(ADMIN_ID, `🔔 উইথড্র\n👤 ${uid}\n💰 $${amt}\n📱 ${s.method}: ${t}`);
         delete sessions[uid];
     }
 });
-
-
-
 
 module.exports = async (req, res) => {
     if (req.method === 'GET') {
