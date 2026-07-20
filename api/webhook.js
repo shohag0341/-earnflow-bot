@@ -109,12 +109,24 @@ module.exports = async (req, res) => {
         if (action === 'check_join' && user_id) { const { data: ch } = await supabase.from('channels').select('*'); if (!ch?.length) return res.json({ joined: true }); for (const c of ch) { try { const r = await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/getChatMember?chat_id=${c.channel_id}&user_id=${user_id}`); const j = await r.json(); if (!j.ok || ['left','kicked'].includes(j.result?.status)) return res.json({ joined: false }); } catch(e) { return res.json({ joined: false }); } } return res.json({ joined: true }); }
         if (action === 'get_user' && user_id) { const { data: u } = await supabase.from('bot_users').select('balance').eq('user_id',user_id).single(); return res.json({ balance: u?.balance || 0 }); }
         if (action === 'task_remaining' && user_id && task_id) { const td = new Date().toISOString().split('T')[0]; const { data: tk } = await supabase.from('tasks').select('daily_limit').eq('id',task_id).single(); const lim = tk?.daily_limit || 10; const { data: cp } = await supabase.from('task_completions').select('count_today').eq('user_id',user_id).eq('task_id',task_id).eq('completed_at',td).single(); const done = cp?.count_today || 0; return res.json({ remaining: lim - done, daily_limit: lim }); }
+        if (action === 'check_ad' && user_id && task_id) { const td = new Date().toISOString().split('T')[0]; const { data: av } = await supabase.from('ad_views').select('*').eq('user_id',user_id).eq('task_id',task_id).eq('viewed_at',td).single(); return res.json({ viewed: !!av, claimed: av?.is_claimed || false }); }
         return res.send('OK');
     }
     if (req.method === 'POST') {
+        if (req.body?.action === 'ad_viewed') {
+            const { user_id, task_id } = req.body;
+            const td = new Date().toISOString().split('T')[0];
+            const { data: existing } = await supabase.from('ad_views').select('*').eq('user_id',user_id).eq('task_id',task_id).eq('viewed_at',td).single();
+            if (!existing) {
+                await supabase.from('ad_views').insert({ user_id, task_id, viewed_at: td, is_claimed: false });
+            }
+            return res.json({ success: true });
+        }
         if (req.body?.action === 'claim_task') {
             const { user_id, task_id } = req.body;
             const td = new Date().toISOString().split('T')[0];
+            const { data: av } = await supabase.from('ad_views').select('*').eq('user_id',user_id).eq('task_id',task_id).eq('viewed_at',td).single();
+            if (!av || av.is_claimed) return res.json({ success: false, message: 'আগে অ্যাড দেখুন!' });
             const { data: tk } = await supabase.from('tasks').select('*').eq('id',task_id).single();
             if (!tk) return res.json({ success: false, message: 'টাস্ক নেই' });
             const { data: cp } = await supabase.from('task_completions').select('*').eq('user_id',user_id).eq('task_id',task_id).eq('completed_at',td).single();
@@ -122,6 +134,7 @@ module.exports = async (req, res) => {
             if (cp) await supabase.from('task_completions').update({ count_today: cp.count_today + 1 }).eq('id',cp.id);
             else await supabase.from('task_completions').insert({ user_id, task_id, completed_at: td, count_today: 1 });
             await supabase.rpc('add_balance', { uid: user_id, amount: tk.reward });
+            await supabase.from('ad_views').update({ is_claimed: true }).eq('id', av.id);
             const { data: u } = await supabase.from('bot_users').select('balance').eq('user_id',user_id).single();
             return res.json({ success: true, reward: tk.reward, new_balance: u.balance });
         }
