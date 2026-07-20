@@ -73,6 +73,8 @@
             var BASE = 'https://earnflow-bot.vercel.app';
             var uid = tg.initDataUnsafe?.user?.id;
             var taskData = null;
+            var claimLocked = true;
+            var currentInterval = null;
 
             try {
                 var p = new URLSearchParams(location.search);
@@ -85,6 +87,11 @@
                 document.getElementById('taskScreen').classList.add('hidden');
                 document.getElementById('timerScreen').classList.add('hidden');
                 document.getElementById(id).classList.remove('hidden');
+            }
+
+            function updateClaimButton() {
+                var btn = document.getElementById('claimBtn');
+                btn.disabled = claimLocked;
             }
 
             async function init(){
@@ -105,7 +112,7 @@
                     var ur = await fetch(`${BASE}/api/webhook?action=get_user&user_id=${uid}`);
                     var ud = await ur.json();
                     document.getElementById('userBalance').textContent = '$' + (ud.balance||0).toFixed(2);
-                    
+
                     if(taskData){
                         document.getElementById('taskIcon').textContent = taskData.icon||'📺';
                         document.getElementById('taskTitle').textContent = taskData.title||'টাস্ক';
@@ -113,15 +120,9 @@
                         var rr = await fetch(`${BASE}/api/webhook?action=task_remaining&user_id=${uid}&task_id=${taskData.task_id}`);
                         var rd = await rr.json();
                         document.getElementById('taskRemaining').textContent = (rd.remaining||0)+'/'+(rd.daily_limit||10);
-
-                        // Check if timer was already completed
-                        var timerKey = 'earnflow_timer_' + taskData.task_id;
-                        if (localStorage.getItem(timerKey) === 'done') {
-                            document.getElementById('claimBtn').disabled = false;
-                        } else {
-                            document.getElementById('claimBtn').disabled = true;
-                        }
                     }
+
+                    updateClaimButton();
                     show('taskScreen');
                 } catch(e){
                     if(taskData){
@@ -152,7 +153,14 @@
             document.getElementById('adBtn').addEventListener('click', function(){
                 var adLink = taskData?.ad_link || 'https://google.com';
                 window.open(adLink, '_blank');
-                
+
+                // Lock claim immediately
+                claimLocked = true;
+                updateClaimButton();
+
+                // Clear previous timer
+                if (currentInterval) clearInterval(currentInterval);
+
                 show('timerScreen');
                 document.getElementById('crossBtn').classList.add('hidden');
                 document.getElementById('timerMsg').className = 'msg hidden';
@@ -160,33 +168,36 @@
                 var sec = 15;
                 document.getElementById('timerBig').textContent = sec;
 
-                var interval = setInterval(function(){
+                currentInterval = setInterval(function(){
                     sec--;
                     document.getElementById('timerBig').textContent = sec;
 
                     if (sec <= 0) {
-                        clearInterval(interval);
+                        clearInterval(currentInterval);
+                        currentInterval = null;
                         document.getElementById('timerBig').textContent = '✓';
                         document.getElementById('crossBtn').classList.remove('hidden');
                         document.getElementById('timerMsg').className = 'msg show success';
                         document.getElementById('timerMsg').textContent = 'এখন বন্ধ করে রিওয়ার্ড নিন!';
 
-                        // Save timer state
-                        if (taskData) {
-                            localStorage.setItem('earnflow_timer_' + taskData.task_id, 'done');
-                        }
+                        // Unlock claim
+                        claimLocked = false;
                     }
                 }, 1000);
             });
 
             document.getElementById('crossBtn').addEventListener('click', function(){
+                updateClaimButton();
                 init();
             });
 
             document.getElementById('claimBtn').addEventListener('click', async function(){
+                if (claimLocked) return;
+
                 var btn = this;
+                claimLocked = true;
+                updateClaimButton();
                 btn.textContent = '⏳...';
-                btn.disabled = true;
 
                 try {
                     var response = await fetch(`${BASE}/api/webhook`, {
@@ -204,23 +215,18 @@
                         document.getElementById('msg').textContent = '🎉 +$'+result.reward+' যোগ হয়েছে!';
                         document.getElementById('userBalance').textContent = '$'+result.new_balance.toFixed(2);
                         tg.HapticFeedback.notification('success');
-
-                        // Clear timer state
-                        if (taskData) {
-                            localStorage.removeItem('earnflow_timer_' + taskData.task_id);
-                        }
-
-                        btn.onclick = null;
                         setTimeout(function(){ tg.close(); }, 2000);
                     } else {
+                        claimLocked = false;
+                        updateClaimButton();
                         btn.textContent = '🎁 রিওয়ার্ড নিন';
-                        btn.disabled = false;
                         document.getElementById('msg').className = 'msg show error';
                         document.getElementById('msg').textContent = (result && result.message) || 'লিমিট শেষ!';
                     }
                 } catch(e) {
+                    claimLocked = false;
+                    updateClaimButton();
                     btn.textContent = '🎁 রিওয়ার্ড নিন';
-                    btn.disabled = false;
                 }
             });
 
