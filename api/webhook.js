@@ -295,6 +295,9 @@ bot.on('text', async (ctx, next) => {
     }
 });
 
+
+
+
 module.exports = async (req, res) => {
     if (req.method === 'GET') {
         const { action, user_id, task_id } = req.query;
@@ -307,4 +310,7 @@ module.exports = async (req, res) => {
     }
     if (req.method === 'POST') {
         if (req.body?.action === 'ad_viewed') { const { user_id, task_id } = req.body; const td = new Date().toISOString().split('T')[0]; const { data: ex } = await supabase.from('ad_views').select('*').eq('user_id',user_id).eq('task_id',task_id).eq('viewed_at',td).single(); if (!ex) await supabase.from('ad_views').insert({ user_id, task_id, viewed_at: td, is_claimed: false }); return res.json({ success: true }); }
-        if (req.body?.action === 'claim_task') { const { user_id, task_id } = req.body; const td = new Date().toISOString().split('T')[0]; const { data: av } = await supabase.from('ad_views').select('*').eq('user_id',user_id).eq('task_id',task_id).eq('viewed_at',td).single(); if (!av || av.is_claimed) return res.json({ success: false, message: 'আগে অ্যাড দেখুন!' }); const { data: tk } = await supabase.from('tasks').select('*').eq('id',task_id).single(); if (!tk) return res.json({ success: false, message: 'টাস্ক নেই'
+        if (req.body?.action === 'claim_task') { const { user_id, task_id } = req.body; const td = new Date().toISOString().split('T')[0]; const { data: av } = await supabase.from('ad_views').select('*').eq('user_id',user_id).eq('task_id',task_id).eq('viewed_at',td).single(); if (!av || av.is_claimed) return res.json({ success: false, message: 'আগে অ্যাড দেখুন!' }); const { data: tk } = await supabase.from('tasks').select('*').eq('id',task_id).single(); if (!tk) return res.json({ success: false, message: 'টাস্ক নেই' }); const { data: cp } = await supabase.from('task_completions').select('*').eq('user_id',user_id).eq('task_id',task_id).eq('completed_at',td).single(); if (cp && cp.count_today >= tk.daily_limit) return res.json({ success: false, message: 'লিমিট শেষ' }); if (cp) await supabase.from('task_completions').update({ count_today: cp.count_today + 1 }).eq('id',cp.id); else await supabase.from('task_completions').insert({ user_id, task_id, completed_at: td, count_today: 1 }); await supabase.rpc('add_balance', { uid: user_id, amount: tk.reward }); await supabase.from('ad_views').update({ is_claimed: true }).eq('id', av.id); const { data: u } = await supabase.from('bot_users').select('balance').eq('user_id',user_id).single(); return res.json({ success: true, reward: tk.reward, new_balance: u.balance }); }
+        try { await bot.handleUpdate(req.body, res); } catch(e) { res.send('OK'); }
+    }
+};
