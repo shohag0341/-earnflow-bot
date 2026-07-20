@@ -73,8 +73,8 @@
             var BASE = 'https://earnflow-bot.vercel.app';
             var uid = tg.initDataUnsafe?.user?.id;
             var taskData = null;
-            var claimLocked = true;
             var currentInterval = null;
+            var adSaved = false;
 
             try {
                 var p = new URLSearchParams(location.search);
@@ -87,11 +87,6 @@
                 document.getElementById('taskScreen').classList.add('hidden');
                 document.getElementById('timerScreen').classList.add('hidden');
                 document.getElementById(id).classList.remove('hidden');
-            }
-
-            function updateClaimButton() {
-                var btn = document.getElementById('claimBtn');
-                btn.disabled = claimLocked;
             }
 
             async function init(){
@@ -120,9 +115,18 @@
                         var rr = await fetch(`${BASE}/api/webhook?action=task_remaining&user_id=${uid}&task_id=${taskData.task_id}`);
                         var rd = await rr.json();
                         document.getElementById('taskRemaining').textContent = (rd.remaining||0)+'/'+(rd.daily_limit||10);
-                    }
 
-                    updateClaimButton();
+                        // Check backend if ad viewed and not claimed
+                        var ar = await fetch(`${BASE}/api/webhook?action=check_ad&user_id=${uid}&task_id=${taskData.task_id}`);
+                        var ad = await ar.json();
+                        if (ad.viewed && !ad.claimed) {
+                            document.getElementById('claimBtn').disabled = false;
+                            adSaved = true;
+                        } else {
+                            document.getElementById('claimBtn').disabled = true;
+                            adSaved = false;
+                        }
+                    }
                     show('taskScreen');
                 } catch(e){
                     if(taskData){
@@ -154,11 +158,9 @@
                 var adLink = taskData?.ad_link || 'https://google.com';
                 window.open(adLink, '_blank');
 
-                // Lock claim immediately
-                claimLocked = true;
-                updateClaimButton();
+                document.getElementById('claimBtn').disabled = true;
+                adSaved = false;
 
-                // Clear previous timer
                 if (currentInterval) clearInterval(currentInterval);
 
                 show('timerScreen');
@@ -178,25 +180,33 @@
                         document.getElementById('timerBig').textContent = '✓';
                         document.getElementById('crossBtn').classList.remove('hidden');
                         document.getElementById('timerMsg').className = 'msg show success';
-                        document.getElementById('timerMsg').textContent = 'এখন বন্ধ করে রিওয়ার্ড নিন!';
+                        document.getElementById('timerMsg').textContent = 'এখন বন্ধ করুন!';
 
-                        // Unlock claim
-                        claimLocked = false;
+                        // Save ad view to backend
+                        fetch(`${BASE}/api/webhook`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({action:'ad_viewed', user_id: uid, task_id: taskData?.task_id})
+                        }).then(function(){
+                            adSaved = true;
+                        });
                     }
                 }, 1000);
             });
 
             document.getElementById('crossBtn').addEventListener('click', function(){
-                updateClaimButton();
                 init();
             });
 
             document.getElementById('claimBtn').addEventListener('click', async function(){
-                if (claimLocked) return;
+                if (!adSaved) {
+                    document.getElementById('msg').className = 'msg show error';
+                    document.getElementById('msg').textContent = 'আগে অ্যাড দেখুন!';
+                    return;
+                }
 
                 var btn = this;
-                claimLocked = true;
-                updateClaimButton();
+                btn.disabled = true;
                 btn.textContent = '⏳...';
 
                 try {
@@ -215,17 +225,16 @@
                         document.getElementById('msg').textContent = '🎉 +$'+result.reward+' যোগ হয়েছে!';
                         document.getElementById('userBalance').textContent = '$'+result.new_balance.toFixed(2);
                         tg.HapticFeedback.notification('success');
+                        adSaved = false;
                         setTimeout(function(){ tg.close(); }, 2000);
                     } else {
-                        claimLocked = false;
-                        updateClaimButton();
+                        btn.disabled = false;
                         btn.textContent = '🎁 রিওয়ার্ড নিন';
                         document.getElementById('msg').className = 'msg show error';
                         document.getElementById('msg').textContent = (result && result.message) || 'লিমিট শেষ!';
                     }
                 } catch(e) {
-                    claimLocked = false;
-                    updateClaimButton();
+                    btn.disabled = false;
                     btn.textContent = '🎁 রিওয়ার্ড নিন';
                 }
             });
