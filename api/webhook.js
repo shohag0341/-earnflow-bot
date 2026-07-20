@@ -77,7 +77,6 @@ bot.hears('🏆 লিডারবোর্ড', async (ctx) => {
 bot.hears('🏧 উইথড্র', (ctx) => ctx.reply('🏧 শীঘ্রই আসছে...'));
 bot.hears('📞 সাপোর্ট', (ctx) => ctx.reply('📞 @admin'));
 
-// Admin commands
 bot.command('admin', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; ctx.reply('👑 /addtask /removetask /tasks /addchannel /removechannel /channels /users'); });
 bot.command('addtask', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; sessions[ctx.from.id] = { action: 'addtask', step: 'title' }; ctx.reply('📝 টাইটেল:'); });
 bot.command('removetask', async (ctx) => { if (ctx.from.id !== ADMIN_ID) return; const { data: t } = await supabase.from('tasks').select('id,title'); if (!t?.length) return ctx.reply('⚠️ নেই'); ctx.reply('🗑️ আইডি:\n'+t.map(x=>`🆔 ${x.id}: ${x.title}`).join('\n')); sessions[ctx.from.id]={action:'removetask',step:'confirm'}; });
